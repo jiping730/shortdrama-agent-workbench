@@ -32,31 +32,55 @@ class Repository:
     def __init__(self, database: Database) -> None:
         self.db = database
 
-    def ensure_defaults(self, workflow_steps: list[str]) -> WorkflowVersionModel:
+    def ensure_defaults(
+        self,
+        workflow_steps: list[str],
+        *,
+        workflow_name: str = "script-to-storyboard",
+        workflow_version: str = "1.0.0",
+        workflow_description: str = "Deterministic, evidence-backed script to storyboard workflow",
+        definition_id: str | None = None,
+        version_id: str | None = None,
+    ) -> WorkflowVersionModel:
+        """Ensure the registered workflow definition/version exists.
+
+        The default values preserve the original storyboard identifiers. Named
+        adapters receive deterministic identifiers so the runtime can persist an
+        injected workflow without coupling the repository to one business plugin.
+        """
         with self.db.session() as session:
             workspace = session.get(WorkspaceModel, "default-workspace")
             if workspace is None:
                 session.add(WorkspaceModel(id="default-workspace", name="Default Workspace"))
             definition = session.execute(
-                select(WorkflowDefinitionModel).where(WorkflowDefinitionModel.name == "script-to-storyboard")
+                select(WorkflowDefinitionModel).where(WorkflowDefinitionModel.name == workflow_name)
             ).scalar_one_or_none()
             if definition is None:
                 definition = WorkflowDefinitionModel(
-                    id="workflow_script_to_storyboard", name="script-to-storyboard",
-                    description="Deterministic, evidence-backed script to storyboard workflow",
+                    id=definition_id or (
+                        "workflow_script_to_storyboard"
+                        if workflow_name == "script-to-storyboard" else stable_id("workflow", workflow_name)
+                    ),
+                    name=workflow_name,
+                    description=workflow_description,
                 )
                 session.add(definition)
                 session.flush()
             version = session.execute(
                 select(WorkflowVersionModel).where(
                     WorkflowVersionModel.workflow_definition_id == definition.id,
-                    WorkflowVersionModel.version == "1.0.0",
+                    WorkflowVersionModel.version == workflow_version,
                 )
             ).scalar_one_or_none()
             if version is None:
                 version = WorkflowVersionModel(
-                    id="workflow_script_to_storyboard_v1", workflow_definition_id=definition.id,
-                    version="1.0.0", step_names=workflow_steps, is_active=True,
+                    id=version_id or (
+                        "workflow_script_to_storyboard_v1"
+                        if workflow_name == "script-to-storyboard" and workflow_version == "1.0.0"
+                        else stable_id("workflow-version", workflow_name, workflow_version)
+                    ),
+                    workflow_definition_id=definition.id, version=workflow_version,
+                    step_names=workflow_steps, is_active=True,
                 )
                 session.add(version)
             return version

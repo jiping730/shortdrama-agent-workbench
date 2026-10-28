@@ -17,8 +17,8 @@ from .domain import (
 from .providers import FakeModel, ModelProvider
 from .repository import ArtifactStore, Repository
 from .schemas import Evidence, Fact, Scene, Shot, Storyboard
-from .workflows.base import WorkflowAdapter
-from .workflows.script_to_storyboard import SCRIPT_STEPS, ScriptToStoryboardAdapter
+from .workflows.base import WorkflowAdapter, assert_workflow_adapter
+from .workflows.script_to_storyboard import ScriptToStoryboardAdapter
 
 
 class SimulatedInterruption(RuntimeError):
@@ -43,12 +43,18 @@ class WorkflowRuntime:
         self.repository = Repository(self.database)
         self.model = model or FakeModel(self.settings.fake_model_mode)
         self.adapter = adapter or ScriptToStoryboardAdapter(self.model)
+        assert_workflow_adapter(self.adapter)
+        self._definition = self.adapter.register()
+        self._step_names = tuple(step.name for step in self._definition.steps)
         self.artifacts = ArtifactStore(self.settings.artifact_dir)
-        self.repository.ensure_defaults([step.name for step in self.adapter.definition.steps])
+        self.repository.ensure_defaults(
+            list(self._step_names), workflow_name=self._definition.name,
+            workflow_version=self._definition.version, workflow_description=self._definition.description,
+        )
 
     @property
     def workflow_definition(self):
-        return self.adapter.register()
+        return self._definition
 
     def create_run(
         self, *, project_id: str, script: str, script_id: str = "script-1", title: str = "Untitled",
@@ -59,7 +65,10 @@ class WorkflowRuntime:
         if model_mode and isinstance(self.model, FakeModel):
             self.model.mode = model_mode
         input_hash = content_hash({"script_id": script_id, "title": title, "script": script})
-        version = self.repository.ensure_defaults(SCRIPT_STEPS)
+        version = self.repository.ensure_defaults(
+            list(self._step_names), workflow_name=self._definition.name,
+            workflow_version=self._definition.version, workflow_description=self._definition.description,
+        )
         self.repository.ensure_project(project_id, workspace_id, project_name)
         existing = self.repository.find_completed_by_fingerprint(project_id, version.id, input_hash)
         if existing is not None:
@@ -83,9 +92,11 @@ class WorkflowRuntime:
         self.repository.create_run(
             run_id=run_id, project_id=project_id, workflow_version_id=version.id,
             input_artifact_id=input_artifact.id, input_hash=input_hash,
-            correlation_id=stable_id("corr", run_id), context=context, step_names=SCRIPT_STEPS,
+            correlation_id=stable_id("corr", run_id), context=context, step_names=self._step_names,
         )
         self.repository.create_event(run_id, "run.created", {"workflow": self.workflow_definition.name, "version": version.version})
+        context = self._call_adapter_context_hook(run_id, "start", context)
+        self.repository.create_event(run_id, "workflow.started", {"workflow": self.workflow_definition.name})
         self._set_run_status(run_id, RunStatus.QUEUED, reason="created")
         return self.execute_run(run_id, stop_after_step=stop_after_step)
 
@@ -289,6 +300,8 @@ class WorkflowRuntime:
             if self.repository.get_reviews(run_id, status="rejected") and not dict(run.context_json or {}).get("selective_retry_active"):
                 raise WorkflowStepError(ErrorCode.REVIEW_REJECTED, "rejected scenes require selective retry")
             self._finish_review_gate(run_id)
+        context = self._call_adapter_context_hook(run_id, "resume", dict(self._require_run(run_id).context_json or {}))
+        self.repository.create_event(run_id, "workflow.resumed", {"workflow": self.workflow_definition.name})
         return self.execute_run(run_id)
 
     def cancel(self, run_id: str) -> RuntimeResult:
@@ -300,7 +313,7 @@ class WorkflowRuntime:
         checkpoint = self.repository.latest_checkpoint(run_id)
         if checkpoint is None:
             raise WorkflowStepError(ErrorCode.PERSISTENCE_ERROR, "no checkpoint available for recovery")
-        context = dict(checkpoint.snapshot_json)
+        context = self._call_adapter_context_hook(run_id, "recover", dict(checkpoint.snapshot_json))
         self.repository.update_run(run_id, context_json=context, current_step=checkpoint.step_name, error_code=None, error_message=None)
         for step in self.repository.get_steps(run_id):
             if step.status == StepStatus.RUNNING.value:
@@ -375,7 +388,11 @@ class WorkflowRuntime:
             "wait_for_human_review": ["storyboard", "revision"],
             "revise_rejected_scenes": ["script_text", "scenes", "facts", "rejected_scene_ids", "revision"],
             "adopt_result": ["storyboard"], "export_artifacts": ["storyboard"],
-        }[step_name]
+        }.get(step_name)
+        if keys is None:
+            # Generic adapters can choose their own context shape. Hashing the
+            # complete durable context gives them the same idempotency boundary.
+            return dict(context)
         return {key: context.get(key) for key in keys}
 
     def _advance(self, run_id: str, step_name: str, context: dict[str, Any], artifact_id: str) -> None:
@@ -441,21 +458,21 @@ class WorkflowRuntime:
 
     def _next_step(self, step_name: str) -> str | None:
         try:
-            index = SCRIPT_STEPS.index(step_name)
+            index = self._step_names.index(step_name)
         except ValueError:
             return None
-        return SCRIPT_STEPS[index + 1] if index + 1 < len(SCRIPT_STEPS) else None
+        return self._step_names[index + 1] if index + 1 < len(self._step_names) else None
 
     def _ordered_steps(self, run_id: str) -> list[StepExecutionModel]:
-        order = {name: index for index, name in enumerate(SCRIPT_STEPS)}
+        order = {name: index for index, name in enumerate(self._step_names)}
         return sorted(self.repository.get_steps(run_id), key=lambda step: order.get(step.step_name, 999))
 
     def _previous_step(self, step_name: str) -> str | None:
         try:
-            index = SCRIPT_STEPS.index(step_name)
+            index = self._step_names.index(step_name)
         except ValueError:
             return None
-        return SCRIPT_STEPS[index - 1] if index > 0 else None
+        return self._step_names[index - 1] if index > 0 else None
 
     @staticmethod
     def _normalize(value: Any) -> Any:
@@ -466,3 +483,13 @@ class WorkflowRuntime:
         if isinstance(value, dict):
             return {key: WorkflowRuntime._normalize(item) for key, item in value.items()}
         return value
+
+    def _call_adapter_context_hook(
+        self, run_id: str, hook_name: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
+        hook = getattr(self.adapter, hook_name)
+        result = hook(dict(context))
+        if not isinstance(result, dict):
+            raise TypeError(f"workflow adapter {hook_name}() must return a context dict")
+        self.repository.update_run(run_id, context_json=result)
+        return result

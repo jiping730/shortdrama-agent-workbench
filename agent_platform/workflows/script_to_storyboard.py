@@ -45,6 +45,18 @@ class ScriptToStoryboardAdapter:
     def register(self) -> WorkflowDefinition:
         return self.definition
 
+    def start(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Initialize business context; durable run state stays in WorkflowRuntime."""
+        return dict(context)
+
+    def resume(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Resume business context after the runtime has loaded a persisted run."""
+        return dict(context)
+
+    def recover(self, context: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a checkpoint context without owning checkpoint persistence."""
+        return dict(context)
+
     def validate(self, step_name: str, value: Any) -> Any:
         try:
             if step_name == "split_script":

@@ -7,7 +7,7 @@
 | 阶段 | 必须通过的证据 | 状态 |
 |---|---|---|
 | 0 只读盘点与架构决策 | `docs/reference-analysis.md`、`docs/architecture-decisions.md`、只读边界测试、依赖边界扫描 | 已通过（2026-10-28） |
-| 1 Workflow Adapter 与 Runtime 接口 | Adapter contract tests、已有 workflow 接入/隔离测试、Fake provider contract | 待阶段 0 通过 |
+| 1 Workflow Adapter 与 Runtime 接口 | Adapter contract tests、已有 workflow 接入/隔离测试、Fake provider contract | 已通过（2026-10-28） |
 | 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 待阶段 1 通过 |
 | 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 待阶段 2 通过 |
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 待阶段 3 通过 |
@@ -35,3 +35,24 @@ py -3.9 -m pytest tests/gates/test_stage0_gate.py -q --basetemp=.pytest-tmp
 只有该命令通过后，才进入阶段 1。此前已有的业务实现不自动视为后续阶段已通过。
 
 阶段 0 门禁结果（2026-10-28）：`3 passed`。阶段 0 的文档、只读参考边界和禁止依赖扫描均已通过；现允许开始阶段 1。
+
+## 阶段 1 当前验收
+
+已形成的证据：
+
+- `agent_platform/workflows/base.py`：明确 `register`、`validate`、`start`、`resume`、`execute_step`、`recover` 六项 Adapter contract，并在 Runtime 初始化时 fail fast 校验。
+- `agent_platform/workflows/legacy.py`：通过注入式 `LegacyWorkflowAdapter` 委托已有 workflow 的业务方法和生命周期，不导入参考仓库源码；Runtime 继续持有 Attempt、Checkpoint、事务和事件。
+- `tests/gates/test_stage1_gate.py`：验证契约完整性、注入式 workflow 的持久化执行、`start/resume/recover` 生命周期委托和不完整 Adapter 拒绝。
+- `tests/unit`、`tests/integration`、`tests/e2e`：既有基线回归通过。
+
+阶段 1 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage1_gate.py -q --basetemp=.pytest-tmp
+4 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage1-all
+19 passed
+```
+
+阶段 1 已通过，现允许进入阶段 2。阶段 2 的数据库扩展和迁移验收仍未开始，不能以本阶段结果代替。
