@@ -10,7 +10,7 @@
 | 1 Workflow Adapter 与 Runtime 接口 | Adapter contract tests、已有 workflow 接入/隔离测试、Fake provider contract | 已通过（2026-10-28） |
 | 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 已通过（2026-10-28） |
 | 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 已通过（2026-10-28） |
-| 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 待阶段 3 通过 |
+| 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 已通过（2026-10-28） |
 | 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 待阶段 4 通过 |
 | 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 待阶段 5 通过 |
 | 7 可选扩展 | real provider/queue/object storage/additional workflow 各自独立验收 | 明确延期，不阻塞 v1 |
@@ -98,3 +98,23 @@ py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage3-all2
 ```
 
 全量测试中的 1 个 skip 是阶段 2 PostgreSQL 测试未设置连接串；阶段 2 已在隔离 PostgreSQL 环境单独取得 `5 passed`，不影响阶段 3 专项门禁。阶段 3 已通过，现允许进入阶段 4；阶段 4 只验证 script-to-storyboard 业务契约和证据覆盖，不把本阶段可靠性测试当作业务验收。
+
+## 阶段 4 当前验收
+
+已形成的证据：
+
+- `agent_platform/workflows/script_to_storyboard.py`、`agent_platform/schemas.py`：11 个声明步骤；确定性 scene/evidence 范围；Fact、Shot、Storyboard 的结构化校验；事实和分镜的 Evidence 覆盖约束；审核后只修订目标 scene。
+- `tests/gates/test_stage4_gate.py`：验证步骤顺序、稳定 scene ID、原文 offset、跨 Run Evidence 隔离、Schema 拒绝、无依据事实拒绝、分镜字段契约和 FakeModel 离线全流程。
+- 离线流程实际从 `waiting_review` 经审核批准到 `completed`，并产生 JSON/CSV/HTML 导出 Artifact。
+
+阶段 4 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage4_gate.py -q --basetemp=.pytest-tmp-stage4-gate
+5 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage4-all
+35 passed, 1 skipped
+```
+
+阶段 4 已通过，现允许进入阶段 5。阶段 5 的 REST、CLI、导出契约和管理台 smoke test 尚未开始；本阶段只证明业务插件，不证明控制面完整。
