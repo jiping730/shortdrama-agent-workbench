@@ -2,7 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
+COPY alembic.ini ./
 COPY agent_platform ./agent_platform
+COPY migrations ./migrations
 RUN pip install --no-cache-dir ".[postgres]"
 
 ENV DATABASE_URL=sqlite:////app/data/agent_platform.db

@@ -8,7 +8,7 @@
 |---|---|---|
 | 0 只读盘点与架构决策 | `docs/reference-analysis.md`、`docs/architecture-decisions.md`、只读边界测试、依赖边界扫描 | 已通过（2026-10-28） |
 | 1 Workflow Adapter 与 Runtime 接口 | Adapter contract tests、已有 workflow 接入/隔离测试、Fake provider contract | 已通过（2026-10-28） |
-| 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 待阶段 1 通过 |
+| 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 已通过（2026-10-28） |
 | 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 待阶段 2 通过 |
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 待阶段 3 通过 |
 | 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 待阶段 4 通过 |
@@ -56,3 +56,24 @@ py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage1-all
 ```
 
 阶段 1 已通过，现允许进入阶段 2。阶段 2 的数据库扩展和迁移验收仍未开始，不能以本阶段结果代替。
+
+## 阶段 2 当前验收
+
+已形成的证据：
+
+- `agent_platform/db.py`：15 个核心领域表通过 SQLAlchemy 统一建模，包含 Run、Task、StepExecution、Attempt、Checkpoint、Artifact、Evidence、ReviewTask、ToolCall、ExternalCall 和 RunEvent 等持久化边界。
+- `migrations/versions/0001_initial.py`：Alembic 初始 revision；SQLite 空库 upgrade smoke test 通过且重复 upgrade 幂等。
+- `tests/gates/test_stage2_gate.py`：验证 SQLite 表/列契约、事务回滚、结构化事件顺序、Alembic upgrade 和 PostgreSQL schema/事务。
+- `Dockerfile`、`docker-compose.yml`：镜像包含 Alembic 配置/迁移目录，PostgreSQL 测试端口仅绑定本机回环地址。
+
+阶段 2 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage2_gate.py -q --basetemp=.pytest-tmp-stage2-postgres
+5 passed
+
+py -3.9 -c "... command.upgrade(c, 'head') ..."
+postgres alembic upgrade head: ok
+```
+
+PostgreSQL 证据使用隔离的 `stage2gate` compose project 和新 volume，未修改原有数据库卷；验证后该临时 project 会停止。阶段 2 已通过，现允许进入阶段 3。阶段 3 的恢复、幂等、局部重试和 Error Inbox 仍需单独门禁。
