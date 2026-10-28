@@ -8,6 +8,7 @@
 
 - [reference-analysis.md](reference-analysis.md)：四个参考项目的入口、数据契约、Workflow、CLI 和隔离边界。
 - [architecture-decisions.md](architecture-decisions.md)：复用已有 Workflow 思想、Runtime 解耦、模块化单体和非 RAG 核心决策。
+- [capability-matrix.md](capability-matrix.md)：逐项说明四个参考项目的能力吸收状态、代码证据和后续完善方向。
 - [stage-gates.md](stage-gates.md)：阶段 0～7 的交付证据、测试命令、验收结果和延期范围。
 
 参考目录始终只读；任何新增实现必须落在本仓库，并通过独立测试证明行为。
