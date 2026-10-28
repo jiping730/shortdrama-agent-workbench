@@ -11,7 +11,7 @@
 | 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 已通过（2026-10-28） |
 | 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 已通过（2026-10-28） |
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 已通过（2026-10-28） |
-| 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 待阶段 4 通过 |
+| 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 已通过（2026-10-28） |
 | 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 待阶段 5 通过 |
 | 7 可选扩展 | real provider/queue/object storage/additional workflow 各自独立验收 | 明确延期，不阻塞 v1 |
 
@@ -118,3 +118,25 @@ py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage4-all
 ```
 
 阶段 4 已通过，现允许进入阶段 5。阶段 5 的 REST、CLI、导出契约和管理台 smoke test 尚未开始；本阶段只证明业务插件，不证明控制面完整。
+
+## 阶段 5 当前验收
+
+已形成的证据：
+
+- `agent_platform/api.py`：版本化 REST 路由覆盖 Run 创建/查询/暂停/恢复/取消/重试、事件、Artifact、Review、审核决策、Workflow 描述和 Error Inbox。
+- `agent_platform/cli.py`：`run create/show/list/pause/resume/cancel/retry`、`review list/approve/reject`、`workflow list/describe` 和 `export json/csv/html` 均通过真实 SQLite 控制面调用。
+- `agent_platform/exporter.py`：JSON、CSV、HTML 三种导出均写入文件并包含 Run/步骤/审核/审计信息。
+- `agent_platform/api.py` 根路由：运行管理台 smoke 页面展示 Run 控制面入口、状态和时间线，不以聊天窗口为首页。
+- `tests/gates/test_stage5_gate.py`：验证 OpenAPI 路径契约、API 审核/局部重试闭环、CLI 全部命令族和三种导出。
+
+阶段 5 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage5_gate.py -q --basetemp=.pytest-tmp-stage5-gate2
+2 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage5-all
+37 passed, 1 skipped
+```
+
+阶段 5 已通过，现允许进入阶段 6。阶段 6 的 clean environment、FakeModel 全模式、Docker startup、CI 和 secret scan 仍需单独验证。
