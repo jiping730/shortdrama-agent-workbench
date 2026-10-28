@@ -19,6 +19,8 @@
 - [state-machine.md](state-machine.md)：Run/Step 状态、合法转换和非法转换审计。
 - [recovery.md](recovery.md)：Checkpoint、恢复、幂等、局部重试和 unknown 安全策略。
 - [extension-guide.md](extension-guide.md)：WorkflowAdapter、ModelProvider、ToolRegistry、队列和 Artifact Storage 扩展方法。
+- [implementation-guide.md](implementation-guide.md)：从当前 v1 到能力矩阵完整落地的实现规范、模块契约、可靠性算法和分阶段门禁。
+- [platform-overview.md](platform-overview.md)：平台定位、用户流程、架构组成、目标完成态和产品价值。
 
 ## 工程交付
 

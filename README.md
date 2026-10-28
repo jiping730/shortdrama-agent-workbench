@@ -301,6 +301,8 @@ make run
 - [reference-analysis.md](docs/reference-analysis.md)：四个参考项目的只读分析和隔离边界；
 - [architecture-decisions.md](docs/architecture-decisions.md)：Runtime 解耦、模块化单体和非 RAG 核心决策；
 - [capability-matrix.md](docs/capability-matrix.md)：当前已吸收能力、代码证据、未覆盖能力和完善路线；
+- [implementation-guide.md](docs/implementation-guide.md)：完整实现规范、模块契约、运行时算法、测试和交付门禁；
+- [platform-overview.md](docs/platform-overview.md)：目标平台的详细介绍、使用方式、用户角色和完成态说明；
 - [stage-gates.md](docs/stage-gates.md)：阶段 0～7 的验收证据和延期范围；
 - [architecture.md](docs/architecture.md)：模块边界与数据流；
 - [state-machine.md](docs/state-machine.md)：Run/Step 状态和合法转换；
