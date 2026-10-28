@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-workflow-platform"
+version = "0.1.0"
+description = "A recoverable, observable Agent Workflow Platform for personal projects"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.103,<1",
+  "uvicorn[standard]>=0.23,<1",
+  "pydantic>=2.5,<3",
+  "sqlalchemy>=2.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4,<9",
+  "httpx>=0.24,<1",
+  "alembic>=1.12,<2",
+  "pre-commit>=3.5,<5",
+]
+postgres = ["psycopg[binary]>=3.1,<4"]
+anthropic = ["anthropic>=0.34,<1"]
+
+[project.scripts]
+agent-platform = "agent_platform.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_platform*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
