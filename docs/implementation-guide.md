@@ -374,8 +374,11 @@ class ModelProvider(Protocol):
         self, script_text: str, scenes: list[Scene], facts: list[Fact]
     ) -> list[Shot]: ...
     def revise_storyboard(
-        self, script_text: str, scenes: list[Scene], facts: list[Fact],
-        rejected_scene_ids: list[str]
+        self,
+        script_text: str,
+        scenes: list[Scene],
+        facts: list[Fact],
+        rejected_scene_ids: list[str],
     ) -> list[Shot]: ...
 ~~~
 
