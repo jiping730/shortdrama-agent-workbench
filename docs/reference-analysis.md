@@ -46,4 +46,4 @@
 
 ## 盘点结论
 
-已有 Agent Workflow 不是玩具：它有稳定 ID、注入式模型、分层 Skill、ReviewGate、Mock/错误测试和工具桥接边界。但它不是持久化执行引擎，缺少本项目要求的统一 Run/Task/Step/Attempt/Checkpoint 生命周期。因此本项目复用其“业务编排边界和审核不可越权”思想，并通过 `WorkflowAdapter` 注入，而不是把它变成第二套内存状态机或直接绑定参考仓库。
+已有 Agent Workflow 不是玩具：它有稳定 ID、注入式模型、分层 Skill、ReviewGate、Mock/错误测试和工具桥接边界；其可复用的 Evidence 约束也要求结果能够回指来源。但它不是持久化执行引擎，缺少本项目要求的统一 Run/Task/Step/Attempt/Checkpoint 生命周期。因此本项目复用其“业务编排边界和审核不可越权”思想，并通过 `WorkflowAdapter` 注入，而不是把它变成第二套内存状态机或直接绑定参考仓库。
