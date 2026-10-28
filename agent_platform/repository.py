@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Iterable
 
 from sqlalchemy import desc, select
 
+from .artifact_storage import ArtifactStore
 from .db import (
     ArtifactModel, AttemptModel, CheckpointModel, Database, EvidenceModel,
     ExternalCallModel, ProjectModel, ReviewTaskModel, RunEventModel, RunModel,
@@ -13,19 +13,6 @@ from .db import (
     WorkflowVersionModel, WorkspaceModel,
 )
 from .domain import content_hash, stable_id, utcnow
-
-
-class ArtifactStore:
-    """Content-addressed local repository; S3/MinIO can implement the same API later."""
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.root.mkdir(parents=True, exist_ok=True)
-
-    def put(self, artifact_id: str, content: str) -> str:
-        path = self.root / f"{artifact_id}.json"
-        path.write_text(content, encoding="utf-8")
-        return str(path)
 
 
 class Repository:

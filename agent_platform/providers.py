@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import ValidationError
 
 try:
     from typing import Protocol
@@ -118,44 +121,85 @@ class AnthropicModelAdapter:
     name = "anthropic"
     version = "external"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, *, client: Any | None = None, max_tokens: int = 4096) -> None:
         self.api_key = api_key
         self.model = model
-        try:
-            from anthropic import Anthropic
-        except ImportError as exc:  # optional dependency
-            self._client = None
-            self._import_error = exc
+        self.max_tokens = max_tokens
+        self._import_error: Exception | None = None
+        if client is not None:
+            self._client = client
         else:
-            self._client = Anthropic(api_key=api_key)
-            self._import_error = None
+            try:
+                from anthropic import Anthropic
+            except ImportError as exc:  # optional dependency
+                self._client = None
+                self._import_error = exc
+            else:
+                self._client = Anthropic(api_key=api_key)
 
-    def _call(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _call(self, operation: str, payload: dict[str, Any]) -> list[Any] | dict[str, Any]:
         if self._client is None:
             raise WorkflowStepError(ErrorCode.MODEL_ERROR, "optional anthropic package is not installed")
         try:
             response = self._client.messages.create(
-                model=self.model, max_tokens=4096,
+                model=self.model, max_tokens=self.max_tokens,
                 system="Return only valid JSON matching the requested workflow contract.",
                 messages=[{"role": "user", "content": f"operation={operation}\npayload={payload}"}],
             )
-            text = response.content[0].text
-            import json
-            return json.loads(text)
+            blocks = getattr(response, "content", [])
+            text = getattr(blocks[0], "text", "") if blocks else ""
+            result = json.loads(text)
+            if not isinstance(result, (list, dict)):
+                raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, "Anthropic response must be a JSON list or object")
+            return result
+        except WorkflowStepError:
+            raise
+        except json.JSONDecodeError as exc:
+            raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, "Anthropic response was not valid JSON") from exc
         except Exception as exc:
             raise WorkflowStepError(ErrorCode.MODEL_ERROR, f"Anthropic call failed: {exc}", retriable=True) from exc
 
+    @staticmethod
+    def _items(result: list[Any] | dict[str, Any], key: str) -> list[Any]:
+        items = result if isinstance(result, list) else result.get(key, [])
+        if not isinstance(items, list):
+            raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, f"Anthropic field {key} must be a list")
+        return items
+
     def generate_facts(self, *, script_text: str, scenes: list[Scene]) -> list[Fact]:
         result = self._call("generate_facts", {"script_text": script_text, "scenes": [scene.model_dump(mode="json") for scene in scenes]})
-        items = result if isinstance(result, list) else result.get("facts", [])
-        return [Fact.model_validate(item) for item in items]
+        try:
+            return [Fact.model_validate(item) for item in self._items(result, "facts")]
+        except ValidationError as exc:
+            raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, str(exc)) from exc
 
     def generate_storyboard(self, *, script_text: str, scenes: list[Scene], facts: list[Fact]) -> list[Shot]:
         result = self._call("generate_storyboard", {"script_text": script_text, "scenes": [scene.model_dump(mode="json") for scene in scenes], "facts": [fact.model_dump(mode="json") for fact in facts]})
-        items = result if isinstance(result, list) else result.get("shots", [])
-        return [Shot.model_validate(item) for item in items]
+        try:
+            return [Shot.model_validate(item) for item in self._items(result, "shots")]
+        except ValidationError as exc:
+            raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, str(exc)) from exc
 
     def revise_storyboard(self, *, script_text: str, scenes: list[Scene], facts: list[Fact], rejected_scene_ids: list[str]) -> list[Shot]:
         result = self._call("revise_storyboard", {"script_text": script_text, "scenes": [scene.model_dump(mode="json") for scene in scenes], "facts": [fact.model_dump(mode="json") for fact in facts], "rejected_scene_ids": rejected_scene_ids})
-        items = result if isinstance(result, list) else result.get("shots", [])
-        return [Shot.model_validate(item) for item in items]
+        try:
+            return [Shot.model_validate(item) for item in self._items(result, "shots")]
+        except ValidationError as exc:
+            raise WorkflowStepError(ErrorCode.SCHEMA_VALIDATION_FAILED, str(exc)) from exc
+
+
+def build_model_provider(settings: Any, *, client: Any | None = None) -> ModelProvider:
+    """Select a provider only from explicit configuration.
+
+    FakeModel remains the default, so local tests never contact a model service.
+    Anthropic uses the official SDK through AnthropicModelAdapter; no OpenAI
+    compatibility layer is involved.
+    """
+
+    if settings.model_provider == "fake":
+        return FakeModel(mode=settings.fake_model_mode, version=settings.default_model)
+    if settings.model_provider == "anthropic":
+        if not settings.anthropic_api_key or not settings.anthropic_model:
+            raise ValueError("ANTHROPIC_API_KEY and ANTHROPIC_MODEL are required for MODEL_PROVIDER=anthropic")
+        return AnthropicModelAdapter(settings.anthropic_api_key, settings.anthropic_model, client=client)
+    raise ValueError(f"unsupported model provider: {settings.model_provider}")

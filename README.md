@@ -4,7 +4,7 @@
 
 `Workflow Definition → Run → Task/Step → Attempt → Artifact → Review → Recovery → Audit`
 
-第一条工作流是 `script-to-storyboard`；平台保留扩展边界，未来可以接入 shotlist、character-sheet、production-plan 等受控工作流。
+第一条业务工作流是 `script-to-storyboard`；阶段 7 已用 `script-to-shotlist` 验证扩展边界，其他业务工作流仍按独立验收推进。
 
 ## 已实现能力
 
@@ -16,7 +16,9 @@
 - FakeModel 默认离线运行：`success`、`invalid_output`、`timeout`、`model_error`、`unknown`。
 - 审核暂停、逐 scene selective retry、Attempt 保留、成功步骤幂等复用、unknown 禁止盲重试。
 - 版本化 REST API、最小 CLI、运行管理页、JSON/CSV/HTML 导出。
-- `ModelProvider`、`WorkflowAdapter`、`ToolRegistry`、本地 ArtifactStore 和可选 Anthropic 官方 SDK Adapter。
+- `ModelProvider`、`WorkflowAdapter`、`ToolRegistry`、本地/S3 ArtifactStore 和官方 Anthropic SDK Adapter。
+- SQLite 可恢复本地队列、幂等消息和 LocalWorker；队列不会改变核心 Runtime 状态机。
+- `script-to-shotlist` 第二条可运行工作流，复用确定性场景/Evidence 契约并拥有独立 Schema。
 
 ## 架构
 
@@ -26,9 +28,10 @@ flowchart LR
   Control --> Runtime[Workflow Runtime]
   Runtime --> Adapter[WorkflowAdapter]
   Adapter --> Storyboard[script-to-storyboard]
-  Runtime --> Execution[FakeModel / ModelProvider / ToolRegistry]
+  Adapter --> Shotlist[script-to-shotlist]
+  Runtime --> Execution[ModelProvider / ToolRegistry / LocalWorker]
   Runtime --> DB[(SQLite / PostgreSQL)]
-  Runtime --> Artifacts[Artifact Repository]
+  Runtime --> Artifacts[Local / S3 Artifact Repository]
   Runtime --> Audit[Events / Attempts / ExternalCalls]
 ```
 
@@ -102,10 +105,27 @@ docker compose up --build
 
 - `DATABASE_URL`：默认 `sqlite:///./agent_platform.db`；PostgreSQL 使用 `postgresql+psycopg://...`，本地可安装 `.[postgres]` 获取 psycopg driver。
 - `ARTIFACT_DIR`：本地 Artifact 文件目录。
+- `ARTIFACT_BACKEND`：`local`（默认）或 `s3`；S3 模式需要 `S3_ARTIFACT_BUCKET`，可选 `S3_ARTIFACT_PREFIX`、`S3_ENDPOINT_URL`。
 - `FAKE_MODEL_MODE`：默认 `success`，也可用 `invalid_output`、`timeout`、`model_error`、`unknown` 验证错误流。
-- `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`：仅用于可选官方 Anthropic SDK Adapter，密钥只从环境注入。
+- `MODEL_PROVIDER`：`fake`（默认）或显式 `anthropic`。
+- `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`：`MODEL_PROVIDER=anthropic` 时使用官方 Anthropic SDK，密钥只从环境注入。
 
-真实模型接入不改变 Runtime：注入实现 `ModelProvider` 的 Adapter，所有结果仍须走 schema 校验、Attempt、Artifact 和事件审计。项目不使用 OpenAI 兼容接口模拟 Claude。
+真实模型接入不改变 Runtime：安装 `.[anthropic]` 并显式配置 `MODEL_PROVIDER=anthropic`，所有结果仍须走 schema 校验、Attempt、Artifact 和事件审计。项目不使用 OpenAI 兼容接口模拟 Claude。
+
+## 阶段 7 扩展示例
+
+队列模式先创建一个不立即执行的 Run，再交给本地 Worker：
+
+```python
+from agent_platform.queue import LocalWorker, SQLiteTaskQueue
+
+result = runtime.create_run(project_id="queued-demo", script=script, defer_execution=True)
+worker = LocalWorker(runtime, SQLiteTaskQueue("data/queue.db"))
+worker.enqueue_run(result.run_id)
+worker.run_once()
+```
+
+对象存储可用 `ARTIFACT_BACKEND=s3` 切换到 S3/MinIO 兼容端点；安装 `.[object-storage]`。离线门禁使用注入式客户端，不上传真实数据。
 
 ## 参考项目与技术边界
 
@@ -113,11 +133,13 @@ docker compose up --build
 
 ## 已完成、延期和限制
 
-已完成：模块化单体 Runtime、持久化领域表、Checkpoint/恢复、局部审核重试、离线 FakeModel、API/CLI/导出、管理页、Docker/迁移/CI 基础文件和离线测试。
+已完成：模块化单体 Runtime、持久化领域表、Checkpoint/恢复、局部审核重试、离线 FakeModel、API/CLI/导出、管理页、Docker/迁移/CI、官方 Anthropic SDK 边界、本地队列 Worker、Local/S3 ArtifactStore 和 `script-to-shotlist` 扩展。
 
-明确延期：真实异步队列、多 worker lease、S3/MinIO 实现、OpenTelemetry exporter、完整鉴权/多租户、复杂计费、真实媒体生成、更多业务工作流。
+明确延期：生产级多 worker lease/可见性超时、真实云对象存储端到端演练、OpenTelemetry exporter、完整鉴权/多租户、复杂计费、真实媒体生成、更多业务工作流。
 
-已知限制：第一版同步执行 worker；默认 SQLite 不适合作为多进程生产库；PostgreSQL driver 需要按部署环境安装；Anthropic adapter 需要显式安装可选依赖并配置模型策略。
+未来路线：在这些能力分别完成独立验收后，再评估分布式队列、更多受控工作流和生产级观测扩展。
+
+已知限制：核心 API 默认同步执行；本地队列适合单机 Worker，不替代 Redis/SQS；S3 适配器已具备注入式契约但未在云端上传真实数据；Anthropic adapter 需要显式安装可选依赖、配置模型策略和真实凭据。
 
 ## 安全与 Git 交付
 

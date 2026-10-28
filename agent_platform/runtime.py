@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .artifact_storage import ArtifactStore, build_artifact_store
 from .config import Settings
 from .db import Database, RunModel, StepExecutionModel
 from .domain import (
@@ -14,8 +15,8 @@ from .domain import (
     UnknownExternalCall, WorkflowStepError, assert_run_transition,
     assert_step_transition, content_hash, stable_id, utcnow,
 )
-from .providers import FakeModel, ModelProvider
-from .repository import ArtifactStore, Repository
+from .providers import FakeModel, ModelProvider, build_model_provider
+from .repository import Repository
 from .schemas import Evidence, Fact, Scene, Shot, Storyboard
 from .workflows.base import WorkflowAdapter, assert_workflow_adapter
 from .workflows.script_to_storyboard import ScriptToStoryboardAdapter
@@ -36,17 +37,18 @@ class WorkflowRuntime:
     def __init__(
         self, *, database: Database | None = None, settings: Settings | None = None,
         model: ModelProvider | None = None, adapter: WorkflowAdapter | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self.settings = settings or Settings.from_env()
         self.database = database or Database(self.settings)
         self.database.create_all()
         self.repository = Repository(self.database)
-        self.model = model or FakeModel(self.settings.fake_model_mode)
+        self.model = model or build_model_provider(self.settings)
         self.adapter = adapter or ScriptToStoryboardAdapter(self.model)
         assert_workflow_adapter(self.adapter)
         self._definition = self.adapter.register()
         self._step_names = tuple(step.name for step in self._definition.steps)
-        self.artifacts = ArtifactStore(self.settings.artifact_dir)
+        self.artifacts = artifact_store or build_artifact_store(self.settings)
         self.repository.ensure_defaults(
             list(self._step_names), workflow_name=self._definition.name,
             workflow_version=self._definition.version, workflow_description=self._definition.description,
@@ -60,7 +62,7 @@ class WorkflowRuntime:
         self, *, project_id: str, script: str, script_id: str = "script-1", title: str = "Untitled",
         workspace_id: str = "default-workspace", project_name: str | None = None,
         model_mode: str | None = None, idempotency_key: str | None = None,
-        stop_after_step: str | None = None,
+        stop_after_step: str | None = None, defer_execution: bool = False,
     ) -> RuntimeResult:
         if model_mode and isinstance(self.model, FakeModel):
             self.model.mode = model_mode
@@ -102,6 +104,8 @@ class WorkflowRuntime:
         context = self._call_adapter_context_hook(run_id, "start", context)
         self.repository.create_event(run_id, "workflow.started", {"workflow": self.workflow_definition.name})
         self._set_run_status(run_id, RunStatus.QUEUED, reason="created")
+        if defer_execution:
+            return RuntimeResult(run_id, RunStatus.QUEUED.value)
         return self.execute_run(run_id, stop_after_step=stop_after_step)
 
     def execute_run(self, run_id: str, *, stop_after_step: str | None = None) -> RuntimeResult:
@@ -415,6 +419,11 @@ class WorkflowRuntime:
             old_shots = {shot["scene_id"]: shot for shot in context.get("shots", [])}
             old_shots.update({shot["scene_id"]: shot for shot in result})
             context["shots"] = list(old_shots.values())
+        hook = getattr(self.adapter, "apply_step_result", None)
+        if callable(hook):
+            context = hook(step_name, result, context, run_id=run_id)
+            if not isinstance(context, dict):
+                raise TypeError("workflow adapter apply_step_result() must return a context dict")
         return context
 
     def _step_input_snapshot(self, step_name: str, context: dict[str, Any]) -> dict[str, Any]:

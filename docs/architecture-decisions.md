@@ -18,4 +18,4 @@ Control Plane、Workflow Runtime、Execution Plane、Data Plane 和 Observabilit
 
 ## ADR-005 Adapter/扩展点的暂缓能力
 
-`ModelProvider`、`ToolRegistry`、`WorkflowAdapter`、`ArtifactStore` 和可选 `AnthropicModelAdapter` 是扩展点。当前默认实现为 FakeModel、本地文件和同步 worker；真实模型、S3/MinIO、队列、OpenTelemetry、更多工作流和权限系统均不阻塞核心离线验收。
+`ModelProvider`、`ToolRegistry`、`WorkflowAdapter`、`ArtifactStore` 和 `AnthropicModelAdapter` 是扩展点。默认仍是 FakeModel、本地文件和同步 API；阶段 7 已补充官方 Anthropic SDK 边界、SQLite 本地队列 Worker、S3-compatible adapter 和 `script-to-shotlist` 示例。生产级多 worker lease、云端端到端演练、OpenTelemetry、权限系统和更多业务工作流仍独立延期。

@@ -13,7 +13,7 @@
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 已通过（2026-10-28） |
 | 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 已通过（2026-10-28） |
 | 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 已通过（2026-10-28） |
-| 7 可选扩展 | real provider/queue/object storage/additional workflow 各自独立验收 | 明确延期，不阻塞 v1 |
+| 7 可选扩展 | real provider/queue/object storage/additional workflow 各自独立验收 | 已通过（2026-10-28） |
 
 ## 阶段 0 当前验收
 
@@ -172,4 +172,38 @@ platform: Up; postgres: Up (healthy)
 PostgreSQL: 该 Run 存在，9 个 artifacts，23 条 run_events，input_artifact_id 已正确回填
 ```
 
-阶段 6 已通过，现允许进入阶段 7；阶段 7 的真实模型、队列、对象存储和更多工作流仍按产品边界明确延期，不作为 v1 已支持能力。
+阶段 6 已通过，现允许进入阶段 7。阶段 7 必须分别证明真实模型边界、队列 Worker、对象存储适配器和第二条工作流；未通过前不能标记整体目标完成。
+
+## 阶段 7 当前验收条件
+
+- 官方 Anthropic SDK：注入式 SDK client 的离线 contract test；有效 JSON、非法 JSON、Pydantic schema 错误均进入结构化错误路径；默认 provider 仍为 FakeModel。
+- 队列：SQLite 队列跨实例重开后保留消息；幂等 enqueue 不复制消息；LocalWorker 能执行 deferred Run，并正确 ack/nack。
+- 对象存储：Local 和 S3-compatible `put` contract；Runtime 注入 S3 adapter 后数据库仍保存 URI、hash、schema version 和父工件关系；不上传真实业务数据。
+- 更多工作流：`script-to-shotlist` 使用同一 Runtime，产生自己的结构化 Artifact、Checkpoint 和 Evidence，不复制状态机。
+- 安全边界：阶段 7 测试不需要真实密钥、外网模型请求或云端对象存储；生产级多 worker lease、可见性超时和云端演练继续明确延期。
+
+阶段 7 专项门禁命令：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage7_gate.py -q --basetemp=.pytest-tmp-stage7-gate
+```
+
+阶段 7 验收结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage7_gate.py -q --basetemp=.pytest-tmp-stage7-gate2
+9 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage7-all3
+50 passed, 1 skipped
+```
+
+Docker/PostgreSQL 验收使用隔离 Compose project `stage6gate2`，未删除既有 volume：
+
+```text
+容器内 GET /health: 200
+script-to-shotlist Run: completed
+PostgreSQL: 6 artifacts, 5 checkpoints, 2 evidence
+```
+
+阶段 7 已通过，允许将整体 v1 目标标记为完成。明确延期项仍为生产级多 worker lease/可见性超时、真实云对象存储端到端演练、OpenTelemetry exporter、完整鉴权/多租户、复杂计费、真实媒体生成和更多业务工作流；这些不被当前代码宣称为已支持。

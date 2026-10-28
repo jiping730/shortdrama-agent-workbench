@@ -76,6 +76,26 @@ class Shot(BaseModel):
     evidence_ids: List[str] = Field(min_length=1)
 
 
+class ShotListItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    shot_id: str
+    scene_id: str
+    order: int = Field(ge=1)
+    duration_hint: str = Field(min_length=1)
+    location: str = Field(min_length=1)
+    characters: List[str]
+    action: str = Field(min_length=1)
+    evidence_ids: List[str] = Field(min_length=1)
+
+
+class ShotList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    shotlist_id: str
+    script_id: str
+    revision: int = Field(ge=1)
+    items: List[ShotListItem] = Field(min_length=1)
+
+
 class Storyboard(BaseModel):
     model_config = ConfigDict(extra="forbid")
     storyboard_id: str
