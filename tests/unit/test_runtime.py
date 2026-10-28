@@ -12,7 +12,11 @@ def test_offline_run_reaches_review_and_selective_retry_only_calls_rejected_scen
     runtime.reject_review(reviews[0].id, "reviewer", "action is unclear")
     runtime.approve_review(reviews[1].id, "reviewer")
     runtime.retry(result.run_id, scene_ids=[reviews[0].scene_id])
-    replacement = [review for review in runtime.repository.get_reviews(result.run_id) if review.status == "pending"]
+    replacement = [
+        review
+        for review in runtime.repository.get_reviews(result.run_id)
+        if review.status == "pending"
+    ]
     assert len(replacement) == 1
     assert replacement[0].scene_id == reviews[0].scene_id
 
@@ -37,7 +41,10 @@ def test_repeated_completed_input_reuses_run_without_new_success_attempts(runtim
 def test_unknown_external_result_is_persisted_and_not_blindly_retried(tmp_path, script):
     from agent_platform.config import Settings
     from agent_platform.db import Database
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'unknown.db'}", artifact_dir=tmp_path / "artifacts")
+
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'unknown.db'}", artifact_dir=tmp_path / "artifacts"
+    )
     model = FakeModel(mode="unknown")
     runtime = WorkflowRuntime(database=Database(settings), settings=settings, model=model)
     result = runtime.create_run(project_id="project-3", script=script)
@@ -52,7 +59,10 @@ def test_unknown_external_result_is_persisted_and_not_blindly_retried(tmp_path, 
 def test_checkpoint_recovery_after_process_interruption(tmp_path, script):
     from agent_platform.config import Settings
     from agent_platform.db import Database
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'recovery.db'}", artifact_dir=tmp_path / "artifacts")
+
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'recovery.db'}", artifact_dir=tmp_path / "artifacts"
+    )
     runtime = WorkflowRuntime(database=Database(settings), settings=settings, model=FakeModel())
     try:
         runtime.create_run(project_id="project-4", script=script, stop_after_step="split_script")
@@ -68,8 +78,13 @@ def test_checkpoint_recovery_after_process_interruption(tmp_path, script):
 def test_invalid_model_output_fails_with_structured_error(tmp_path, script):
     from agent_platform.config import Settings
     from agent_platform.db import Database
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'invalid.db'}", artifact_dir=tmp_path / "artifacts")
-    runtime = WorkflowRuntime(database=Database(settings), settings=settings, model=FakeModel(mode="invalid_output"))
+
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'invalid.db'}", artifact_dir=tmp_path / "artifacts"
+    )
+    runtime = WorkflowRuntime(
+        database=Database(settings), settings=settings, model=FakeModel(mode="invalid_output")
+    )
     result = runtime.create_run(project_id="project-5", script=script)
     run = runtime.repository.get_run(result.run_id)
     assert result.status == RunStatus.FAILED.value

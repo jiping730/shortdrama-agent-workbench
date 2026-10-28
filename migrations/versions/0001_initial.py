@@ -1,4 +1,5 @@
 """Create the platform domain tables."""
+
 from alembic import op
 
 from agent_platform.db import Base

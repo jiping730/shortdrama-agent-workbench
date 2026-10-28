@@ -1,16 +1,26 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Iterable
 
 from sqlalchemy import desc, select
 
-from .artifact_storage import ArtifactStore
 from .db import (
-    ArtifactModel, AttemptModel, CheckpointModel, Database, EvidenceModel,
-    ExternalCallModel, ProjectModel, ReviewTaskModel, RunEventModel, RunModel,
-    StepExecutionModel, TaskModel, ToolCallModel, WorkflowDefinitionModel,
-    WorkflowVersionModel, WorkspaceModel,
+    ArtifactModel,
+    AttemptModel,
+    CheckpointModel,
+    Database,
+    EvidenceModel,
+    ExternalCallModel,
+    ProjectModel,
+    ReviewTaskModel,
+    RunEventModel,
+    RunModel,
+    StepExecutionModel,
+    TaskModel,
+    ToolCallModel,
+    WorkflowDefinitionModel,
+    WorkflowVersionModel,
+    WorkspaceModel,
 )
 from .domain import content_hash, stable_id, utcnow
 
@@ -44,9 +54,11 @@ class Repository:
             ).scalar_one_or_none()
             if definition is None:
                 definition = WorkflowDefinitionModel(
-                    id=definition_id or (
+                    id=definition_id
+                    or (
                         "workflow_script_to_storyboard"
-                        if workflow_name == "script-to-storyboard" else stable_id("workflow", workflow_name)
+                        if workflow_name == "script-to-storyboard"
+                        else stable_id("workflow", workflow_name)
                     ),
                     name=workflow_name,
                     description=workflow_description,
@@ -61,18 +73,23 @@ class Repository:
             ).scalar_one_or_none()
             if version is None:
                 version = WorkflowVersionModel(
-                    id=version_id or (
+                    id=version_id
+                    or (
                         "workflow_script_to_storyboard_v1"
                         if workflow_name == "script-to-storyboard" and workflow_version == "1.0.0"
                         else stable_id("workflow-version", workflow_name, workflow_version)
                     ),
-                    workflow_definition_id=definition.id, version=workflow_version,
-                    step_names=workflow_steps, is_active=True,
+                    workflow_definition_id=definition.id,
+                    version=workflow_version,
+                    step_names=workflow_steps,
+                    is_active=True,
                 )
                 session.add(version)
             return version
 
-    def ensure_project(self, project_id: str, workspace_id: str, name: str | None = None) -> ProjectModel:
+    def ensure_project(
+        self, project_id: str, workspace_id: str, name: str | None = None
+    ) -> ProjectModel:
         with self.db.session() as session:
             workspace = session.get(WorkspaceModel, workspace_id)
             if workspace is None:
@@ -80,35 +97,60 @@ class Repository:
             project = session.get(ProjectModel, project_id)
             if project is None:
                 project = ProjectModel(
-                    id=project_id, workspace_id=workspace_id, name=name or project_id,
+                    id=project_id,
+                    workspace_id=workspace_id,
+                    name=name or project_id,
                 )
                 session.add(project)
             return project
 
     def create_run(
-        self, *, run_id: str, project_id: str, workflow_version_id: str,
-        input_artifact_id: str | None, input_hash: str, correlation_id: str,
-        context: dict[str, Any], step_names: Iterable[str],
+        self,
+        *,
+        run_id: str,
+        project_id: str,
+        workflow_version_id: str,
+        input_artifact_id: str | None,
+        input_hash: str,
+        correlation_id: str,
+        context: dict[str, Any],
+        step_names: Iterable[str],
     ) -> RunModel:
         step_names = list(step_names)
         with self.db.session() as session:
             run = RunModel(
-                id=run_id, project_id=project_id, workflow_version_id=workflow_version_id,
-                status="created", input_artifact_id=input_artifact_id,
-                current_step=step_names[0] if step_names else None, correlation_id=correlation_id,
-                input_hash=input_hash, context_json=context,
+                id=run_id,
+                project_id=project_id,
+                workflow_version_id=workflow_version_id,
+                status="created",
+                input_artifact_id=input_artifact_id,
+                current_step=step_names[0] if step_names else None,
+                correlation_id=correlation_id,
+                input_hash=input_hash,
+                context_json=context,
             )
             session.add(run)
             for step_name in step_names:
                 step_id = stable_id("step", run_id, step_name)
-                session.add(StepExecutionModel(
-                    id=step_id, step_id=step_id,
-                    run_id=run_id, step_name=step_name, status="pending", input_hash=input_hash,
-                ))
-                session.add(TaskModel(
-                    id=stable_id("task", run_id, step_name), run_id=run_id, name=step_name,
-                    status="pending", payload_json={"step_id": step_id},
-                ))
+                session.add(
+                    StepExecutionModel(
+                        id=step_id,
+                        step_id=step_id,
+                        run_id=run_id,
+                        step_name=step_name,
+                        status="pending",
+                        input_hash=input_hash,
+                    )
+                )
+                session.add(
+                    TaskModel(
+                        id=stable_id("task", run_id, step_name),
+                        run_id=run_id,
+                        name=step_name,
+                        status="pending",
+                        payload_json={"step_id": step_id},
+                    )
+                )
             session.flush()
             return run
 
@@ -123,14 +165,21 @@ class Repository:
                 stmt = stmt.where(RunModel.project_id == project_id)
             return list(session.execute(stmt).scalars())
 
-    def find_completed_by_fingerprint(self, project_id: str, workflow_version_id: str, input_hash: str) -> RunModel | None:
+    def find_completed_by_fingerprint(
+        self, project_id: str, workflow_version_id: str, input_hash: str
+    ) -> RunModel | None:
         with self.db.session() as session:
-            stmt = select(RunModel).where(
-                RunModel.project_id == project_id,
-                RunModel.workflow_version_id == workflow_version_id,
-                RunModel.input_hash == input_hash,
-                RunModel.status == "completed",
-            ).order_by(desc(RunModel.created_at)).limit(1)
+            stmt = (
+                select(RunModel)
+                .where(
+                    RunModel.project_id == project_id,
+                    RunModel.workflow_version_id == workflow_version_id,
+                    RunModel.input_hash == input_hash,
+                    RunModel.status == "completed",
+                )
+                .order_by(desc(RunModel.created_at))
+                .limit(1)
+            )
             return session.execute(stmt).scalar_one_or_none()
 
     def update_run(self, run_id: str, **fields: Any) -> RunModel:
@@ -146,13 +195,22 @@ class Repository:
 
     def get_steps(self, run_id: str) -> list[StepExecutionModel]:
         with self.db.session() as session:
-            return list(session.execute(select(StepExecutionModel).where(StepExecutionModel.run_id == run_id).order_by(StepExecutionModel.id)).scalars())
+            return list(
+                session.execute(
+                    select(StepExecutionModel)
+                    .where(StepExecutionModel.run_id == run_id)
+                    .order_by(StepExecutionModel.id)
+                ).scalars()
+            )
 
     def get_step(self, run_id: str, step_name: str) -> StepExecutionModel | None:
         with self.db.session() as session:
-            return session.execute(select(StepExecutionModel).where(
-                StepExecutionModel.run_id == run_id, StepExecutionModel.step_name == step_name,
-            )).scalar_one_or_none()
+            return session.execute(
+                select(StepExecutionModel).where(
+                    StepExecutionModel.run_id == run_id,
+                    StepExecutionModel.step_name == step_name,
+                )
+            ).scalar_one_or_none()
 
     def update_step(self, step_id: str, **fields: Any) -> StepExecutionModel:
         with self.db.session() as session:
@@ -166,9 +224,12 @@ class Repository:
 
     def update_task_for_step(self, run_id: str, step_id: str, status: str) -> None:
         with self.db.session() as session:
-            task = session.execute(select(TaskModel).where(
-                TaskModel.run_id == run_id, TaskModel.payload_json["step_id"].as_string() == step_id,
-            )).scalar_one_or_none()
+            task = session.execute(
+                select(TaskModel).where(
+                    TaskModel.run_id == run_id,
+                    TaskModel.payload_json["step_id"].as_string() == step_id,
+                )
+            ).scalar_one_or_none()
             if task is not None:
                 task.status = status
 
@@ -191,13 +252,25 @@ class Repository:
 
     def get_attempts(self, run_id: str) -> list[AttemptModel]:
         with self.db.session() as session:
-            return list(session.execute(select(AttemptModel).where(AttemptModel.run_id == run_id).order_by(AttemptModel.started_at)).scalars())
+            return list(
+                session.execute(
+                    select(AttemptModel)
+                    .where(AttemptModel.run_id == run_id)
+                    .order_by(AttemptModel.started_at)
+                ).scalars()
+            )
 
     def find_success_by_idempotency(self, key: str) -> AttemptModel | None:
         with self.db.session() as session:
-            return session.execute(select(AttemptModel).where(
-                AttemptModel.idempotency_key == key, AttemptModel.status == "succeeded",
-            ).order_by(desc(AttemptModel.finished_at)).limit(1)).scalar_one_or_none()
+            return session.execute(
+                select(AttemptModel)
+                .where(
+                    AttemptModel.idempotency_key == key,
+                    AttemptModel.status == "succeeded",
+                )
+                .order_by(desc(AttemptModel.finished_at))
+                .limit(1)
+            ).scalar_one_or_none()
 
     def create_artifact(self, **fields: Any) -> ArtifactModel:
         with self.db.session() as session:
@@ -212,7 +285,13 @@ class Repository:
 
     def get_artifacts(self, run_id: str) -> list[ArtifactModel]:
         with self.db.session() as session:
-            return list(session.execute(select(ArtifactModel).where(ArtifactModel.run_id == run_id).order_by(ArtifactModel.created_at)).scalars())
+            return list(
+                session.execute(
+                    select(ArtifactModel)
+                    .where(ArtifactModel.run_id == run_id)
+                    .order_by(ArtifactModel.created_at)
+                ).scalars()
+            )
 
     def create_evidence(self, **fields: Any) -> EvidenceModel:
         with self.db.session() as session:
@@ -223,7 +302,11 @@ class Repository:
 
     def get_evidence(self, run_id: str) -> list[EvidenceModel]:
         with self.db.session() as session:
-            return list(session.execute(select(EvidenceModel).where(EvidenceModel.run_id == run_id)).scalars())
+            return list(
+                session.execute(
+                    select(EvidenceModel).where(EvidenceModel.run_id == run_id)
+                ).scalars()
+            )
 
     def create_checkpoint(self, **fields: Any) -> CheckpointModel:
         with self.db.session() as session:
@@ -234,7 +317,12 @@ class Repository:
 
     def latest_checkpoint(self, run_id: str) -> CheckpointModel | None:
         with self.db.session() as session:
-            return session.execute(select(CheckpointModel).where(CheckpointModel.run_id == run_id).order_by(desc(CheckpointModel.sequence_no)).limit(1)).scalar_one_or_none()
+            return session.execute(
+                select(CheckpointModel)
+                .where(CheckpointModel.run_id == run_id)
+                .order_by(desc(CheckpointModel.sequence_no))
+                .limit(1)
+            ).scalar_one_or_none()
 
     def list_error_inbox(self) -> list[dict[str, Any]]:
         """Return durable work requiring operator attention.
@@ -245,40 +333,68 @@ class Repository:
         """
         with self.db.session() as session:
             items: list[dict[str, Any]] = []
-            runs = session.execute(select(RunModel).where(
-                RunModel.status.in_(["failed", "needs_recovery"]),
-            ).order_by(RunModel.updated_at)).scalars()
+            runs = session.execute(
+                select(RunModel)
+                .where(
+                    RunModel.status.in_(["failed", "needs_recovery"]),
+                )
+                .order_by(RunModel.updated_at)
+            ).scalars()
             for run in runs:
-                items.append({
-                    "kind": "run", "item_id": run.id, "run_id": run.id,
-                    "status": run.status, "error_code": run.error_code,
-                    "error_message": run.error_message,
-                    "created_at": run.created_at.isoformat() if run.created_at else None,
-                    "updated_at": run.updated_at.isoformat() if run.updated_at else None,
-                })
+                items.append(
+                    {
+                        "kind": "run",
+                        "item_id": run.id,
+                        "run_id": run.id,
+                        "status": run.status,
+                        "error_code": run.error_code,
+                        "error_message": run.error_message,
+                        "created_at": run.created_at.isoformat() if run.created_at else None,
+                        "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+                    }
+                )
 
-            unknown_calls = session.execute(select(ExternalCallModel).where(
-                ExternalCallModel.status == "unknown",
-            ).order_by(ExternalCallModel.updated_at)).scalars()
+            unknown_calls = session.execute(
+                select(ExternalCallModel)
+                .where(
+                    ExternalCallModel.status == "unknown",
+                )
+                .order_by(ExternalCallModel.updated_at)
+            ).scalars()
             for call in unknown_calls:
-                items.append({
-                    "kind": "external_call", "item_id": call.id, "run_id": call.run_id,
-                    "status": call.status, "error_code": call.error_code,
-                    "operation": call.operation, "provider": call.provider,
-                    "created_at": call.created_at.isoformat() if call.created_at else None,
-                    "updated_at": call.updated_at.isoformat() if call.updated_at else None,
-                })
+                items.append(
+                    {
+                        "kind": "external_call",
+                        "item_id": call.id,
+                        "run_id": call.run_id,
+                        "status": call.status,
+                        "error_code": call.error_code,
+                        "operation": call.operation,
+                        "provider": call.provider,
+                        "created_at": call.created_at.isoformat() if call.created_at else None,
+                        "updated_at": call.updated_at.isoformat() if call.updated_at else None,
+                    }
+                )
 
-            reviews = session.execute(select(ReviewTaskModel).where(
-                ReviewTaskModel.status == "pending",
-            ).order_by(ReviewTaskModel.created_at)).scalars()
+            reviews = session.execute(
+                select(ReviewTaskModel)
+                .where(
+                    ReviewTaskModel.status == "pending",
+                )
+                .order_by(ReviewTaskModel.created_at)
+            ).scalars()
             for review in reviews:
-                items.append({
-                    "kind": "review", "item_id": review.id, "run_id": review.run_id,
-                    "status": review.status, "scene_id": review.scene_id,
-                    "artifact_id": review.artifact_id,
-                    "created_at": review.created_at.isoformat() if review.created_at else None,
-                })
+                items.append(
+                    {
+                        "kind": "review",
+                        "item_id": review.id,
+                        "run_id": review.run_id,
+                        "status": review.status,
+                        "scene_id": review.scene_id,
+                        "artifact_id": review.artifact_id,
+                        "created_at": review.created_at.isoformat() if review.created_at else None,
+                    }
+                )
             return items
 
     def create_review(self, **fields: Any) -> ReviewTaskModel:
@@ -290,12 +406,18 @@ class Repository:
 
     def get_reviews(self, run_id: str, *, status: str | None = None) -> list[ReviewTaskModel]:
         with self.db.session() as session:
-            stmt = select(ReviewTaskModel).where(ReviewTaskModel.run_id == run_id).order_by(ReviewTaskModel.created_at)
+            stmt = (
+                select(ReviewTaskModel)
+                .where(ReviewTaskModel.run_id == run_id)
+                .order_by(ReviewTaskModel.created_at)
+            )
             if status:
                 stmt = stmt.where(ReviewTaskModel.status == status)
             return list(session.execute(stmt).scalars())
 
-    def decide_review(self, review_id: str, *, status: str, reviewer: str, comment: str) -> ReviewTaskModel:
+    def decide_review(
+        self, review_id: str, *, status: str, reviewer: str, comment: str
+    ) -> ReviewTaskModel:
         with self.db.session() as session:
             review = session.get(ReviewTaskModel, review_id)
             if review is None:
@@ -307,11 +429,18 @@ class Repository:
             session.flush()
             return review
 
-    def create_event(self, run_id: str, event_type: str, payload: dict[str, Any], *, step_name: str | None = None) -> RunEventModel:
+    def create_event(
+        self, run_id: str, event_type: str, payload: dict[str, Any], *, step_name: str | None = None
+    ) -> RunEventModel:
         with self.db.session() as session:
             event = RunEventModel(
-                id=stable_id("event", run_id, event_type, utcnow().isoformat(), content_hash(payload)),
-                run_id=run_id, event_type=event_type, step_name=step_name, payload_json=payload,
+                id=stable_id(
+                    "event", run_id, event_type, utcnow().isoformat(), content_hash(payload)
+                ),
+                run_id=run_id,
+                event_type=event_type,
+                step_name=step_name,
+                payload_json=payload,
             )
             session.add(event)
             session.flush()
@@ -319,7 +448,13 @@ class Repository:
 
     def get_events(self, run_id: str) -> list[RunEventModel]:
         with self.db.session() as session:
-            return list(session.execute(select(RunEventModel).where(RunEventModel.run_id == run_id).order_by(RunEventModel.created_at)).scalars())
+            return list(
+                session.execute(
+                    select(RunEventModel)
+                    .where(RunEventModel.run_id == run_id)
+                    .order_by(RunEventModel.created_at)
+                ).scalars()
+            )
 
     def create_external_call(self, **fields: Any) -> ExternalCallModel:
         with self.db.session() as session:
@@ -341,7 +476,13 @@ class Repository:
 
     def get_external_calls(self, run_id: str) -> list[ExternalCallModel]:
         with self.db.session() as session:
-            return list(session.execute(select(ExternalCallModel).where(ExternalCallModel.run_id == run_id).order_by(ExternalCallModel.created_at)).scalars())
+            return list(
+                session.execute(
+                    select(ExternalCallModel)
+                    .where(ExternalCallModel.run_id == run_id)
+                    .order_by(ExternalCallModel.created_at)
+                ).scalars()
+            )
 
     def create_tool_call(self, **fields: Any) -> ToolCallModel:
         with self.db.session() as session:
@@ -352,9 +493,12 @@ class Repository:
 
     def list_workflows(self) -> list[tuple[WorkflowDefinitionModel, WorkflowVersionModel]]:
         with self.db.session() as session:
-            rows = session.execute(select(WorkflowDefinitionModel, WorkflowVersionModel).join(
-                WorkflowVersionModel, WorkflowVersionModel.workflow_definition_id == WorkflowDefinitionModel.id,
-            )).all()
+            rows = session.execute(
+                select(WorkflowDefinitionModel, WorkflowVersionModel).join(
+                    WorkflowVersionModel,
+                    WorkflowVersionModel.workflow_definition_id == WorkflowDefinitionModel.id,
+                )
+            ).all()
             return [(definition, version) for definition, version in rows]
 
     def serialize_model(self, model: Any) -> dict[str, Any]:

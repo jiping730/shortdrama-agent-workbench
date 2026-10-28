@@ -12,12 +12,23 @@ from sqlalchemy import inspect, select
 from agent_platform.db import Database, WorkspaceModel
 from agent_platform.repository import Repository
 
-
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_TABLES = {
-    "workspaces", "projects", "workflow_definitions", "workflow_versions", "runs", "tasks",
-    "step_executions", "attempts", "checkpoints", "artifacts", "evidence", "review_tasks",
-    "tool_calls", "external_calls", "run_events",
+    "workspaces",
+    "projects",
+    "workflow_definitions",
+    "workflow_versions",
+    "runs",
+    "tasks",
+    "step_executions",
+    "attempts",
+    "checkpoints",
+    "artifacts",
+    "evidence",
+    "review_tasks",
+    "tool_calls",
+    "external_calls",
+    "run_events",
 }
 
 
@@ -35,11 +46,61 @@ def test_sqlite_domain_schema_contains_all_required_tables_and_columns(tmp_path)
     inspector = inspect(database.engine)
     assert set(inspector.get_table_names()) >= REQUIRED_TABLES
     required_columns = {
-        "runs": {"id", "project_id", "workflow_version_id", "status", "input_artifact_id", "current_step", "correlation_id", "created_at", "updated_at"},
-        "step_executions": {"step_id", "run_id", "step_name", "status", "input_hash", "current_attempt", "output_artifact_id", "error_code", "started_at", "finished_at"},
-        "attempts": {"id", "step_id", "attempt_no", "input_snapshot", "output_artifact_id", "model_version", "prompt_version", "idempotency_key", "error_type", "started_at", "finished_at"},
-        "artifacts": {"id", "artifact_type", "content_hash", "schema_version", "content_uri", "content", "parent_artifact_ids", "created_at"},
-        "evidence": {"id", "script_id", "scene_id", "source_start", "source_end", "source_text", "content_hash"},
+        "runs": {
+            "id",
+            "project_id",
+            "workflow_version_id",
+            "status",
+            "input_artifact_id",
+            "current_step",
+            "correlation_id",
+            "created_at",
+            "updated_at",
+        },
+        "step_executions": {
+            "step_id",
+            "run_id",
+            "step_name",
+            "status",
+            "input_hash",
+            "current_attempt",
+            "output_artifact_id",
+            "error_code",
+            "started_at",
+            "finished_at",
+        },
+        "attempts": {
+            "id",
+            "step_id",
+            "attempt_no",
+            "input_snapshot",
+            "output_artifact_id",
+            "model_version",
+            "prompt_version",
+            "idempotency_key",
+            "error_type",
+            "started_at",
+            "finished_at",
+        },
+        "artifacts": {
+            "id",
+            "artifact_type",
+            "content_hash",
+            "schema_version",
+            "content_uri",
+            "content",
+            "parent_artifact_ids",
+            "created_at",
+        },
+        "evidence": {
+            "id",
+            "script_id",
+            "scene_id",
+            "source_start",
+            "source_end",
+            "source_text",
+            "content_hash",
+        },
     }
     for table_name, expected in required_columns.items():
         assert expected <= {column["name"] for column in inspector.get_columns(table_name)}
@@ -68,11 +129,18 @@ def test_run_event_store_persists_ordered_structured_payload(tmp_path) -> None:
     repository = Repository(database)
     repository.ensure_defaults(["step"], workflow_name="event-demo", workflow_version="1.0.0")
     repository.ensure_project("event-project", "event-workspace")
-    version = repository.ensure_defaults(["step"], workflow_name="event-demo", workflow_version="1.0.0")
+    version = repository.ensure_defaults(
+        ["step"], workflow_name="event-demo", workflow_version="1.0.0"
+    )
     repository.create_run(
-        run_id="event-run", project_id="event-project", workflow_version_id=version.id,
-        input_artifact_id="input-artifact", input_hash="input-hash", correlation_id="corr-event",
-        context={"source": "gate"}, step_names=["step"],
+        run_id="event-run",
+        project_id="event-project",
+        workflow_version_id=version.id,
+        input_artifact_id="input-artifact",
+        input_hash="input-hash",
+        correlation_id="corr-event",
+        context={"source": "gate"},
+        step_names=["step"],
     )
 
     repository.create_event("event-run", "run.created", {"sequence": 1})

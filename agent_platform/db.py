@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Iterator
+from typing import Iterator
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -45,7 +43,9 @@ class WorkflowDefinitionModel(Base):
 class WorkflowVersionModel(Base):
     __tablename__ = "workflow_versions"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    workflow_definition_id: Mapped[str] = mapped_column(ForeignKey("workflow_definitions.id"), index=True)
+    workflow_definition_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_definitions.id"), index=True
+    )
     version: Mapped[str] = mapped_column(String(50))
     step_names: Mapped[list] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -66,7 +66,9 @@ class RunModel(Base):
     error_code: Mapped[str] = mapped_column(String(80), nullable=True)
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class TaskModel(Base):
@@ -189,7 +191,9 @@ class ExternalCallModel(Base):
     error_code: Mapped[str] = mapped_column(String(80), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(200), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class RunEventModel(Base):
@@ -203,7 +207,9 @@ class RunEventModel(Base):
 
 
 class Database:
-    def __init__(self, settings: Settings | None = None, *, database_url: str | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, *, database_url: str | None = None
+    ) -> None:
         self.settings = settings or Settings.from_env()
         url = database_url or self.settings.database_url
         connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
@@ -227,9 +233,24 @@ class Database:
 
     def table_counts(self) -> dict[str, int]:
         tables = [
-            WorkspaceModel, ProjectModel, WorkflowDefinitionModel, WorkflowVersionModel, RunModel,
-            TaskModel, StepExecutionModel, AttemptModel, CheckpointModel, ArtifactModel,
-            EvidenceModel, ReviewTaskModel, ToolCallModel, ExternalCallModel, RunEventModel,
+            WorkspaceModel,
+            ProjectModel,
+            WorkflowDefinitionModel,
+            WorkflowVersionModel,
+            RunModel,
+            TaskModel,
+            StepExecutionModel,
+            AttemptModel,
+            CheckpointModel,
+            ArtifactModel,
+            EvidenceModel,
+            ReviewTaskModel,
+            ToolCallModel,
+            ExternalCallModel,
+            RunEventModel,
         ]
         with self.session() as session:
-            return {model.__tablename__: len(session.execute(select(model.id)).all()) for model in tables}
+            return {
+                model.__tablename__: len(session.execute(select(model.id)).all())
+                for model in tables
+            }

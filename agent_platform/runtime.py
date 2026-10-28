@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -11,13 +10,21 @@ from .artifact_storage import ArtifactStore, build_artifact_store
 from .config import Settings
 from .db import Database, RunModel, StepExecutionModel
 from .domain import (
-    ErrorCode, InvalidTransition, PauseForReview, RunStatus, StepStatus,
-    UnknownExternalCall, WorkflowStepError, assert_run_transition,
-    assert_step_transition, content_hash, stable_id, utcnow,
+    ErrorCode,
+    InvalidTransition,
+    RunStatus,
+    StepStatus,
+    UnknownExternalCall,
+    WorkflowStepError,
+    assert_run_transition,
+    assert_step_transition,
+    content_hash,
+    stable_id,
+    utcnow,
 )
 from .providers import FakeModel, ModelProvider, build_model_provider
 from .repository import Repository
-from .schemas import Evidence, Fact, Scene, Shot, Storyboard
+from .schemas import Evidence
 from .workflows.base import WorkflowAdapter, assert_workflow_adapter
 from .workflows.script_to_storyboard import ScriptToStoryboardAdapter
 
@@ -35,8 +42,12 @@ class RuntimeResult:
 
 class WorkflowRuntime:
     def __init__(
-        self, *, database: Database | None = None, settings: Settings | None = None,
-        model: ModelProvider | None = None, adapter: WorkflowAdapter | None = None,
+        self,
+        *,
+        database: Database | None = None,
+        settings: Settings | None = None,
+        model: ModelProvider | None = None,
+        adapter: WorkflowAdapter | None = None,
         artifact_store: ArtifactStore | None = None,
     ) -> None:
         self.settings = settings or Settings.from_env()
@@ -50,8 +61,10 @@ class WorkflowRuntime:
         self._step_names = tuple(step.name for step in self._definition.steps)
         self.artifacts = artifact_store or build_artifact_store(self.settings)
         self.repository.ensure_defaults(
-            list(self._step_names), workflow_name=self._definition.name,
-            workflow_version=self._definition.version, workflow_description=self._definition.description,
+            list(self._step_names),
+            workflow_name=self._definition.name,
+            workflow_version=self._definition.version,
+            workflow_description=self._definition.description,
         )
 
     @property
@@ -59,22 +72,34 @@ class WorkflowRuntime:
         return self._definition
 
     def create_run(
-        self, *, project_id: str, script: str, script_id: str = "script-1", title: str = "Untitled",
-        workspace_id: str = "default-workspace", project_name: str | None = None,
-        model_mode: str | None = None, idempotency_key: str | None = None,
-        stop_after_step: str | None = None, defer_execution: bool = False,
+        self,
+        *,
+        project_id: str,
+        script: str,
+        script_id: str = "script-1",
+        title: str = "Untitled",
+        workspace_id: str = "default-workspace",
+        project_name: str | None = None,
+        model_mode: str | None = None,
+        idempotency_key: str | None = None,
+        stop_after_step: str | None = None,
+        defer_execution: bool = False,
     ) -> RuntimeResult:
         if model_mode and isinstance(self.model, FakeModel):
             self.model.mode = model_mode
         input_hash = content_hash({"script_id": script_id, "title": title, "script": script})
         version = self.repository.ensure_defaults(
-            list(self._step_names), workflow_name=self._definition.name,
-            workflow_version=self._definition.version, workflow_description=self._definition.description,
+            list(self._step_names),
+            workflow_name=self._definition.name,
+            workflow_version=self._definition.version,
+            workflow_description=self._definition.description,
         )
         self.repository.ensure_project(project_id, workspace_id, project_name)
         existing = self.repository.find_completed_by_fingerprint(project_id, version.id, input_hash)
         if existing is not None:
-            self.repository.create_event(existing.id, "run.idempotent_reuse", {"input_hash": input_hash})
+            self.repository.create_event(
+                existing.id, "run.idempotent_reuse", {"input_hash": input_hash}
+            )
             return RuntimeResult(existing.id, existing.status)
 
         run_id = stable_id("run", project_id, version.id, input_hash, idempotency_key or "default")
@@ -82,27 +107,52 @@ class WorkflowRuntime:
         if existing_run is not None:
             return RuntimeResult(existing_run.id, existing_run.status)
         context = {
-            "run_id": run_id, "script_id": script_id, "title": title, "script_text": script,
-            "input_hash": input_hash, "revision": 1, "scenes": [], "facts": [], "evidence": [],
-            "shots": [], "storyboard": None, "rejected_scene_ids": [], "approved_scene_ids": [],
+            "run_id": run_id,
+            "script_id": script_id,
+            "title": title,
+            "script_text": script,
+            "input_hash": input_hash,
+            "revision": 1,
+            "scenes": [],
+            "facts": [],
+            "evidence": [],
+            "shots": [],
+            "storyboard": None,
+            "rejected_scene_ids": [],
+            "approved_scene_ids": [],
             "step_artifacts": {},
         }
         self.repository.create_run(
-            run_id=run_id, project_id=project_id, workflow_version_id=version.id,
+            run_id=run_id,
+            project_id=project_id,
+            workflow_version_id=version.id,
             # PostgreSQL enforces artifacts.run_id -> runs.id. Create the run
             # first, then persist its input artifact and backfill this nullable
             # reference so both SQLite and PostgreSQL observe the same order.
-            input_artifact_id=None, input_hash=input_hash,
-            correlation_id=stable_id("corr", run_id), context=context, step_names=self._step_names,
+            input_artifact_id=None,
+            input_hash=input_hash,
+            correlation_id=stable_id("corr", run_id),
+            context=context,
+            step_names=self._step_names,
         )
         input_artifact = self._create_artifact(
-            run_id=run_id, artifact_type="script_input", value={"script_id": script_id, "title": title, "text": script},
-            schema_version="script-input.v1", parents=[], metadata={"input_hash": input_hash},
+            run_id=run_id,
+            artifact_type="script_input",
+            value={"script_id": script_id, "title": title, "text": script},
+            schema_version="script-input.v1",
+            parents=[],
+            metadata={"input_hash": input_hash},
         )
         self.repository.update_run(run_id, input_artifact_id=input_artifact.id)
-        self.repository.create_event(run_id, "run.created", {"workflow": self.workflow_definition.name, "version": version.version})
+        self.repository.create_event(
+            run_id,
+            "run.created",
+            {"workflow": self.workflow_definition.name, "version": version.version},
+        )
         context = self._call_adapter_context_hook(run_id, "start", context)
-        self.repository.create_event(run_id, "workflow.started", {"workflow": self.workflow_definition.name})
+        self.repository.create_event(
+            run_id, "workflow.started", {"workflow": self.workflow_definition.name}
+        )
         self._set_run_status(run_id, RunStatus.QUEUED, reason="created")
         if defer_execution:
             return RuntimeResult(run_id, RunStatus.QUEUED.value)
@@ -121,7 +171,9 @@ class WorkflowRuntime:
             self._set_run_status(run_id, RunStatus.RUNNING, reason="worker_started")
         run = self._require_run(run_id)
         context = dict(run.context_json or {})
-        steps = self._ordered_steps(run_id, selective_retry=bool(context.get("selective_retry_active")))
+        steps = self._ordered_steps(
+            run_id, selective_retry=bool(context.get("selective_retry_active"))
+        )
 
         for step in steps:
             if step.status == StepStatus.SUCCEEDED.value or step.status == StepStatus.SKIPPED.value:
@@ -131,15 +183,26 @@ class WorkflowRuntime:
             if step.status == StepStatus.WAITING_REVIEW.value:
                 return RuntimeResult(run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True)
             if step.status == StepStatus.UNKNOWN.value:
-                self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="unknown_external_call")
+                self._set_run_status(
+                    run_id, RunStatus.NEEDS_RECOVERY, reason="unknown_external_call"
+                )
                 return RuntimeResult(run_id, RunStatus.NEEDS_RECOVERY.value)
             self._execute_step(run_id, step, context)
             run = self._require_run(run_id)
             context = dict(run.context_json or {})
             if stop_after_step == step.step_name:
                 raise SimulatedInterruption(f"simulated worker interruption after {step.step_name}")
-            if run.status in {RunStatus.WAITING_REVIEW.value, RunStatus.PAUSED.value, RunStatus.NEEDS_RECOVERY.value, RunStatus.FAILED.value}:
-                return RuntimeResult(run_id, run.status, paused_for_review=run.status == RunStatus.WAITING_REVIEW.value)
+            if run.status in {
+                RunStatus.WAITING_REVIEW.value,
+                RunStatus.PAUSED.value,
+                RunStatus.NEEDS_RECOVERY.value,
+                RunStatus.FAILED.value,
+            }:
+                return RuntimeResult(
+                    run_id,
+                    run.status,
+                    paused_for_review=run.status == RunStatus.WAITING_REVIEW.value,
+                )
 
         self._set_run_status(run_id, RunStatus.COMPLETED, reason="all_steps_succeeded")
         self.repository.create_event(run_id, "run.completed", {"run_id": run_id})
@@ -149,11 +212,24 @@ class WorkflowRuntime:
         step_name = step.step_name
         input_snapshot = self._step_input_snapshot(step_name, context)
         input_hash = content_hash(input_snapshot)
-        idem_key = stable_id("attempt", run_id, self._require_run(run_id).workflow_version_id, step_name, input_hash)
+        idem_key = stable_id(
+            "attempt", run_id, self._require_run(run_id).workflow_version_id, step_name, input_hash
+        )
         previous = self.repository.find_success_by_idempotency(idem_key)
         if previous is not None and previous.output_artifact_id:
-            self.repository.update_step(step.id, status=StepStatus.SUCCEEDED.value, input_hash=input_hash, output_artifact_id=previous.output_artifact_id, current_attempt=step.current_attempt)
-            self.repository.create_event(run_id, "step.reused", {"step": step_name, "attempt_id": previous.id}, step_name=step_name)
+            self.repository.update_step(
+                step.id,
+                status=StepStatus.SUCCEEDED.value,
+                input_hash=input_hash,
+                output_artifact_id=previous.output_artifact_id,
+                current_attempt=step.current_attempt,
+            )
+            self.repository.create_event(
+                run_id,
+                "step.reused",
+                {"step": step_name, "attempt_id": previous.id},
+                step_name=step_name,
+            )
             artifact = self.repository.get_artifact(previous.output_artifact_id)
             if artifact and artifact.content:
                 prior_result = json.loads(artifact.content)
@@ -163,113 +239,238 @@ class WorkflowRuntime:
             self._advance(run_id, step_name, context, previous.output_artifact_id)
             return
 
-        attempt_no = 1 + sum(1 for item in self.repository.get_attempts(run_id) if item.step_id == step.step_id)
+        attempt_no = 1 + sum(
+            1 for item in self.repository.get_attempts(run_id) if item.step_id == step.step_id
+        )
         attempt_id = stable_id("attempt", run_id, step_name, attempt_no, input_hash)
-        self._set_step(step.id, StepStatus.RUNNING, started_at=utcnow(), input_hash=input_hash, current_attempt=attempt_no)
+        self._set_step(
+            step.id,
+            StepStatus.RUNNING,
+            started_at=utcnow(),
+            input_hash=input_hash,
+            current_attempt=attempt_no,
+        )
         attempt = self.repository.create_attempt(
-            id=attempt_id, step_id=step.step_id, run_id=run_id, attempt_no=attempt_no,
-            input_snapshot=input_snapshot, output_artifact_id=None, model_version=getattr(self.model, "version", None),
-            prompt_version="platform-default-v1", idempotency_key=idem_key, status="running", error_type=None,
+            id=attempt_id,
+            step_id=step.step_id,
+            run_id=run_id,
+            attempt_no=attempt_no,
+            input_snapshot=input_snapshot,
+            output_artifact_id=None,
+            model_version=getattr(self.model, "version", None),
+            prompt_version="platform-default-v1",
+            idempotency_key=idem_key,
+            status="running",
+            error_type=None,
         )
         external_call_id: str | None = None
         if step_name in {"extract_facts", "generate_storyboard", "revise_rejected_scenes"}:
             external_call_id = stable_id("external", run_id, step_name, attempt_no)
             self.repository.create_external_call(
-                id=external_call_id, run_id=run_id, provider=getattr(self.model, "name", "unknown"), operation=step_name,
-                request_json={"step": step_name, "input_hash": input_hash}, response_json=None,
-                status="started", error_code=None, idempotency_key=idem_key,
+                id=external_call_id,
+                run_id=run_id,
+                provider=getattr(self.model, "name", "unknown"),
+                operation=step_name,
+                request_json={"step": step_name, "input_hash": input_hash},
+                response_json=None,
+                status="started",
+                error_code=None,
+                idempotency_key=idem_key,
             )
-        self.repository.create_event(run_id, "step.started", {"step": step_name, "attempt_id": attempt_id}, step_name=step_name)
+        self.repository.create_event(
+            run_id,
+            "step.started",
+            {"step": step_name, "attempt_id": attempt_id},
+            step_name=step_name,
+        )
         try:
-            result = self._normalize(self.adapter.validate(step_name, self.adapter.execute_step(step_name, context)))
+            result = self._normalize(
+                self.adapter.validate(step_name, self.adapter.execute_step(step_name, context))
+            )
             previous_step = self._previous_step(step_name)
             if step_name == "validate_storyboard" and context.get("selective_retry_active"):
                 previous_step = "revise_rejected_scenes"
             artifact = self._create_artifact(
-                run_id=run_id, artifact_type=step_name, value=result, schema_version=f"{step_name}.v1",
-                parents=[context.get("step_artifacts", {}).get(previous_step)] if previous_step else [],
+                run_id=run_id,
+                artifact_type=step_name,
+                value=result,
+                schema_version=f"{step_name}.v1",
+                parents=[context.get("step_artifacts", {}).get(previous_step)]
+                if previous_step
+                else [],
                 metadata={"attempt_id": attempt_id, "input_hash": input_hash},
             )
             context = self._apply_step_result(step_name, result, context, run_id)
             context.setdefault("step_artifacts", {})[step_name] = artifact.id
-            self.repository.update_run(run_id, context_json=context, current_step=self._next_step(step_name))
+            self.repository.update_run(
+                run_id, context_json=context, current_step=self._next_step(step_name)
+            )
             if external_call_id:
-                self.repository.update_external_call(external_call_id, status="succeeded", response_json={"artifact_id": artifact.id})
-            self.repository.update_attempt(attempt.id, status="succeeded", output_artifact_id=artifact.id, finished_at=utcnow())
-            self._set_step(step.id, StepStatus.SUCCEEDED, output_artifact_id=artifact.id, finished_at=utcnow(), error_code=None)
-            self.repository.create_event(run_id, "step.succeeded", {"step": step_name, "artifact_id": artifact.id}, step_name=step_name)
+                self.repository.update_external_call(
+                    external_call_id, status="succeeded", response_json={"artifact_id": artifact.id}
+                )
+            self.repository.update_attempt(
+                attempt.id, status="succeeded", output_artifact_id=artifact.id, finished_at=utcnow()
+            )
+            self._set_step(
+                step.id,
+                StepStatus.SUCCEEDED,
+                output_artifact_id=artifact.id,
+                finished_at=utcnow(),
+                error_code=None,
+            )
+            self.repository.create_event(
+                run_id,
+                "step.succeeded",
+                {"step": step_name, "artifact_id": artifact.id},
+                step_name=step_name,
+            )
             self._checkpoint(run_id, step_name, context, [artifact.id])
             if step_name == "wait_for_human_review":
                 self._create_reviews_for_context(run_id, context, artifact.id)
                 self._set_step(step.id, StepStatus.WAITING_REVIEW, finished_at=utcnow())
-                self._set_run_status(run_id, RunStatus.WAITING_REVIEW, reason="human_review_required")
+                self._set_run_status(
+                    run_id, RunStatus.WAITING_REVIEW, reason="human_review_required"
+                )
             elif step_name == "validate_storyboard" and context.get("selective_retry_active"):
                 self._create_reviews_for_context(run_id, context, artifact.id)
                 wait_step = self.repository.get_step(run_id, "wait_for_human_review")
                 if wait_step and wait_step.status == StepStatus.SUCCEEDED.value:
                     self._set_step(wait_step.id, StepStatus.WAITING_REVIEW, finished_at=utcnow())
-                self._set_run_status(run_id, RunStatus.WAITING_REVIEW, reason="selective_retry_review")
+                self._set_run_status(
+                    run_id, RunStatus.WAITING_REVIEW, reason="selective_retry_review"
+                )
         except UnknownExternalCall as exc:
             if external_call_id:
-                self.repository.update_external_call(external_call_id, status="unknown", error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value)
-            self.repository.update_attempt(attempt.id, status="unknown", error_type=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value, error_message=str(exc), finished_at=utcnow())
-            self._set_step(step.id, StepStatus.UNKNOWN, error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value, finished_at=utcnow())
-            self.repository.create_event(run_id, "external_call.unknown", {"step": step_name, "attempt_id": attempt_id}, step_name=step_name)
+                self.repository.update_external_call(
+                    external_call_id,
+                    status="unknown",
+                    error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                )
+            self.repository.update_attempt(
+                attempt.id,
+                status="unknown",
+                error_type=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                error_message=str(exc),
+                finished_at=utcnow(),
+            )
+            self._set_step(
+                step.id,
+                StepStatus.UNKNOWN,
+                error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                finished_at=utcnow(),
+            )
+            self.repository.create_event(
+                run_id,
+                "external_call.unknown",
+                {"step": step_name, "attempt_id": attempt_id},
+                step_name=step_name,
+            )
             self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="external_result_unknown")
         except WorkflowStepError as exc:
             if exc.code == ErrorCode.TIMEOUT and external_call_id:
                 # A provider timeout cannot prove that the remote side did not
                 # execute. Preserve the attempt and require reconciliation.
                 self.repository.update_external_call(
-                    external_call_id, status="unknown",
+                    external_call_id,
+                    status="unknown",
                     error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
                 )
                 self.repository.update_attempt(
-                    attempt.id, status="unknown",
+                    attempt.id,
+                    status="unknown",
                     error_type=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
-                    error_message=str(exc), finished_at=utcnow(),
+                    error_message=str(exc),
+                    finished_at=utcnow(),
                 )
                 self._set_step(
-                    step.id, StepStatus.UNKNOWN,
+                    step.id,
+                    StepStatus.UNKNOWN,
                     error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
                     finished_at=utcnow(),
                 )
                 self.repository.create_event(
-                    run_id, "external_call.unknown",
+                    run_id,
+                    "external_call.unknown",
                     {"step": step_name, "attempt_id": attempt_id, "reason": "timeout"},
                     step_name=step_name,
                 )
                 self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="timeout_unknown")
                 return
             if external_call_id:
-                self.repository.update_external_call(external_call_id, status="failed", error_code=exc.code.value)
-            self.repository.update_attempt(attempt.id, status="failed", error_type=exc.code.value, error_message=str(exc), finished_at=utcnow())
-            self._set_step(step.id, StepStatus.FAILED, error_code=exc.code.value, finished_at=utcnow())
-            self.repository.create_event(run_id, "step.failed", {"step": step_name, "error_code": exc.code.value, "message": str(exc)}, step_name=step_name)
+                self.repository.update_external_call(
+                    external_call_id, status="failed", error_code=exc.code.value
+                )
+            self.repository.update_attempt(
+                attempt.id,
+                status="failed",
+                error_type=exc.code.value,
+                error_message=str(exc),
+                finished_at=utcnow(),
+            )
+            self._set_step(
+                step.id, StepStatus.FAILED, error_code=exc.code.value, finished_at=utcnow()
+            )
+            self.repository.create_event(
+                run_id,
+                "step.failed",
+                {"step": step_name, "error_code": exc.code.value, "message": str(exc)},
+                step_name=step_name,
+            )
             self.repository.update_run(run_id, error_code=exc.code.value, error_message=str(exc))
             self._set_run_status(run_id, RunStatus.FAILED, reason=exc.code.value)
         except Exception as exc:  # pragma: no cover - defensive boundary
             if external_call_id:
-                self.repository.update_external_call(external_call_id, status="failed", error_code=ErrorCode.UNEXPECTED_ERROR.value)
-            self.repository.update_attempt(attempt.id, status="failed", error_type=ErrorCode.UNEXPECTED_ERROR.value, error_message=str(exc), finished_at=utcnow())
-            self._set_step(step.id, StepStatus.FAILED, error_code=ErrorCode.UNEXPECTED_ERROR.value, finished_at=utcnow())
-            self.repository.create_event(run_id, "step.failed", {"step": step_name, "error_code": ErrorCode.UNEXPECTED_ERROR.value}, step_name=step_name)
-            self.repository.update_run(run_id, error_code=ErrorCode.UNEXPECTED_ERROR.value, error_message=str(exc))
+                self.repository.update_external_call(
+                    external_call_id, status="failed", error_code=ErrorCode.UNEXPECTED_ERROR.value
+                )
+            self.repository.update_attempt(
+                attempt.id,
+                status="failed",
+                error_type=ErrorCode.UNEXPECTED_ERROR.value,
+                error_message=str(exc),
+                finished_at=utcnow(),
+            )
+            self._set_step(
+                step.id,
+                StepStatus.FAILED,
+                error_code=ErrorCode.UNEXPECTED_ERROR.value,
+                finished_at=utcnow(),
+            )
+            self.repository.create_event(
+                run_id,
+                "step.failed",
+                {"step": step_name, "error_code": ErrorCode.UNEXPECTED_ERROR.value},
+                step_name=step_name,
+            )
+            self.repository.update_run(
+                run_id, error_code=ErrorCode.UNEXPECTED_ERROR.value, error_message=str(exc)
+            )
             self._set_run_status(run_id, RunStatus.FAILED, reason="unexpected_error")
 
     def approve_review(self, review_id: str, reviewer: str, comment: str = "") -> RuntimeResult:
         review = self._review(review_id)
         if review.status != "pending":
             raise ValueError("review is already decided")
-        review = self.repository.decide_review(review_id, status="approved", reviewer=reviewer, comment=comment)
-        self.repository.create_event(review.run_id, "review.approved", {"review_id": review_id, "scene_id": review.scene_id, "reviewer": reviewer})
+        review = self.repository.decide_review(
+            review_id, status="approved", reviewer=reviewer, comment=comment
+        )
+        self.repository.create_event(
+            review.run_id,
+            "review.approved",
+            {"review_id": review_id, "scene_id": review.scene_id, "reviewer": reviewer},
+        )
         pending = self.repository.get_reviews(review.run_id, status="pending")
         if pending:
-            return RuntimeResult(review.run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True)
+            return RuntimeResult(
+                review.run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True
+            )
         run = self._require_run(review.run_id)
         rejected = self.repository.get_reviews(review.run_id, status="rejected")
         if rejected and not dict(run.context_json or {}).get("selective_retry_active"):
-            return RuntimeResult(review.run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True)
+            return RuntimeResult(
+                review.run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True
+            )
         self._finish_review_gate(review.run_id)
         return self.execute_run(review.run_id)
 
@@ -277,18 +478,41 @@ class WorkflowRuntime:
         review = self._review(review_id)
         if review.status != "pending":
             raise ValueError("review is already decided")
-        review = self.repository.decide_review(review_id, status="rejected", reviewer=reviewer, comment=comment)
-        self.repository.create_event(review.run_id, "review.rejected", {"review_id": review_id, "scene_id": review.scene_id, "reviewer": reviewer, "comment": comment})
-        self.repository.update_run(review.run_id, error_code=ErrorCode.REVIEW_REJECTED.value, error_message=comment or "review rejected")
+        review = self.repository.decide_review(
+            review_id, status="rejected", reviewer=reviewer, comment=comment
+        )
+        self.repository.create_event(
+            review.run_id,
+            "review.rejected",
+            {
+                "review_id": review_id,
+                "scene_id": review.scene_id,
+                "reviewer": reviewer,
+                "comment": comment,
+            },
+        )
+        self.repository.update_run(
+            review.run_id,
+            error_code=ErrorCode.REVIEW_REJECTED.value,
+            error_message=comment or "review rejected",
+        )
         return RuntimeResult(review.run_id, RunStatus.WAITING_REVIEW.value, paused_for_review=True)
 
-    def retry(self, run_id: str, *, step_name: str | None = None, scene_ids: list[str] | None = None) -> RuntimeResult:
+    def retry(
+        self, run_id: str, *, step_name: str | None = None, scene_ids: list[str] | None = None
+    ) -> RuntimeResult:
         run = self._require_run(run_id)
         scene_ids = scene_ids or []
         if scene_ids:
-            rejected = [review for review in self.repository.get_reviews(run_id, status="rejected") if review.scene_id in scene_ids]
+            rejected = [
+                review
+                for review in self.repository.get_reviews(run_id, status="rejected")
+                if review.scene_id in scene_ids
+            ]
             if set(review.scene_id for review in rejected) != set(scene_ids):
-                raise WorkflowStepError(ErrorCode.REVIEW_REJECTED, "retry scenes must have rejected review tasks")
+                raise WorkflowStepError(
+                    ErrorCode.REVIEW_REJECTED, "retry scenes must have rejected review tasks"
+                )
             context = dict(run.context_json or {})
             context["rejected_scene_ids"] = list(scene_ids)
             context["revision"] = int(context.get("revision", 1)) + 1
@@ -296,20 +520,40 @@ class WorkflowRuntime:
             self.repository.update_run(run_id, context_json=context)
             revise_step = self.repository.get_step(run_id, "revise_rejected_scenes")
             if revise_step and revise_step.status == StepStatus.SUCCEEDED.value:
-                self.repository.update_step(revise_step.id, status=StepStatus.PENDING.value, output_artifact_id=None, error_code=None)
+                self.repository.update_step(
+                    revise_step.id,
+                    status=StepStatus.PENDING.value,
+                    output_artifact_id=None,
+                    error_code=None,
+                )
             wait_step = self.repository.get_step(run_id, "wait_for_human_review")
             if wait_step:
                 if wait_step.status == StepStatus.WAITING_REVIEW.value:
-                    self._set_step(wait_step.id, StepStatus.SUCCEEDED, output_artifact_id=wait_step.output_artifact_id)
+                    self._set_step(
+                        wait_step.id,
+                        StepStatus.SUCCEEDED,
+                        output_artifact_id=wait_step.output_artifact_id,
+                    )
                 elif wait_step.status != StepStatus.SUCCEEDED.value:
-                    self.repository.update_step(wait_step.id, status=StepStatus.SUCCEEDED.value, output_artifact_id=wait_step.output_artifact_id)
+                    self.repository.update_step(
+                        wait_step.id,
+                        status=StepStatus.SUCCEEDED.value,
+                        output_artifact_id=wait_step.output_artifact_id,
+                    )
             validate_step = self.repository.get_step(run_id, "validate_storyboard")
             if validate_step and validate_step.status == StepStatus.SUCCEEDED.value:
                 self._set_step(validate_step.id, StepStatus.PENDING, output_artifact_id=None)
             self._set_run_status(run_id, RunStatus.QUEUED, reason="selective_scene_retry")
             return self.execute_run(run_id)
 
-        target = step_name or next((s.step_name for s in self.repository.get_steps(run_id) if s.status == StepStatus.FAILED.value), None)
+        target = step_name or next(
+            (
+                s.step_name
+                for s in self.repository.get_steps(run_id)
+                if s.status == StepStatus.FAILED.value
+            ),
+            None,
+        )
         if not target:
             raise WorkflowStepError(ErrorCode.INVALID_INPUT, "no failed step to retry")
         step = self.repository.get_step(run_id, target)
@@ -339,11 +583,19 @@ class WorkflowRuntime:
         if run.status == RunStatus.WAITING_REVIEW.value:
             if self.repository.get_reviews(run_id, status="pending"):
                 return RuntimeResult(run_id, run.status, paused_for_review=True)
-            if self.repository.get_reviews(run_id, status="rejected") and not dict(run.context_json or {}).get("selective_retry_active"):
-                raise WorkflowStepError(ErrorCode.REVIEW_REJECTED, "rejected scenes require selective retry")
+            if self.repository.get_reviews(run_id, status="rejected") and not dict(
+                run.context_json or {}
+            ).get("selective_retry_active"):
+                raise WorkflowStepError(
+                    ErrorCode.REVIEW_REJECTED, "rejected scenes require selective retry"
+                )
             self._finish_review_gate(run_id)
-        context = self._call_adapter_context_hook(run_id, "resume", dict(self._require_run(run_id).context_json or {}))
-        self.repository.create_event(run_id, "workflow.resumed", {"workflow": self.workflow_definition.name})
+        self._call_adapter_context_hook(
+            run_id, "resume", dict(self._require_run(run_id).context_json or {})
+        )
+        self.repository.create_event(
+            run_id, "workflow.resumed", {"workflow": self.workflow_definition.name}
+        )
         return self.execute_run(run_id)
 
     def cancel(self, run_id: str) -> RuntimeResult:
@@ -357,30 +609,56 @@ class WorkflowRuntime:
         run = self._require_run(run_id)
         checkpoint = self.repository.latest_checkpoint(run_id)
         if checkpoint is None:
-            raise WorkflowStepError(ErrorCode.PERSISTENCE_ERROR, "no checkpoint available for recovery")
+            raise WorkflowStepError(
+                ErrorCode.PERSISTENCE_ERROR, "no checkpoint available for recovery"
+            )
         context = self._call_adapter_context_hook(run_id, "recover", dict(checkpoint.snapshot_json))
-        self.repository.update_run(run_id, context_json=context, current_step=checkpoint.step_name, error_code=None, error_message=None)
+        self.repository.update_run(
+            run_id,
+            context_json=context,
+            current_step=checkpoint.step_name,
+            error_code=None,
+            error_message=None,
+        )
         for step in self.repository.get_steps(run_id):
             if step.status == StepStatus.RUNNING.value:
                 self.repository.update_step(step.id, status=StepStatus.PENDING.value)
         if run.status != RunStatus.NEEDS_RECOVERY.value:
             self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="recovery_requested")
         self._set_run_status(run_id, RunStatus.QUEUED, reason="checkpoint_loaded")
-        self.repository.create_event(run_id, "run.recovered", {"checkpoint_id": checkpoint.id, "sequence_no": checkpoint.sequence_no})
+        self.repository.create_event(
+            run_id,
+            "run.recovered",
+            {"checkpoint_id": checkpoint.id, "sequence_no": checkpoint.sequence_no},
+        )
         return self.execute_run(run_id)
 
-    def _create_reviews_for_context(self, run_id: str, context: dict[str, Any], artifact_id: str) -> None:
-        existing_pending_or_approved = {(review.scene_id, review.status) for review in self.repository.get_reviews(run_id)}
+    def _create_reviews_for_context(
+        self, run_id: str, context: dict[str, Any], artifact_id: str
+    ) -> None:
+        existing_pending_or_approved = {
+            (review.scene_id, review.status) for review in self.repository.get_reviews(run_id)
+        }
         for scene_id in [scene["scene_id"] for scene in context.get("scenes", [])]:
             if (scene_id, "approved") in existing_pending_or_approved:
                 continue
-            if any(review.scene_id == scene_id and review.status == "pending" for review in self.repository.get_reviews(run_id)):
+            if any(
+                review.scene_id == scene_id and review.status == "pending"
+                for review in self.repository.get_reviews(run_id)
+            ):
                 continue
             self.repository.create_review(
-                id=stable_id("review", run_id, scene_id, context.get("revision", 1)), run_id=run_id,
-                scene_id=scene_id, artifact_id=artifact_id, status="pending", reviewer=None, comment=None,
+                id=stable_id("review", run_id, scene_id, context.get("revision", 1)),
+                run_id=run_id,
+                scene_id=scene_id,
+                artifact_id=artifact_id,
+                status="pending",
+                reviewer=None,
+                comment=None,
             )
-            self.repository.create_event(run_id, "review.created", {"scene_id": scene_id, "artifact_id": artifact_id})
+            self.repository.create_event(
+                run_id, "review.created", {"scene_id": scene_id, "artifact_id": artifact_id}
+            )
 
     def _finish_review_gate(self, run_id: str) -> None:
         wait_step = self.repository.get_step(run_id, "wait_for_human_review")
@@ -389,7 +667,9 @@ class WorkflowRuntime:
         self.repository.update_run(run_id, current_step="revise_rejected_scenes")
         self._set_run_status(run_id, RunStatus.QUEUED, reason="review_approved")
 
-    def _apply_step_result(self, step_name: str, result: Any, context: dict[str, Any], run_id: str) -> dict[str, Any]:
+    def _apply_step_result(
+        self, step_name: str, result: Any, context: dict[str, Any], run_id: str
+    ) -> dict[str, Any]:
         context = dict(context)
         if step_name == "split_script":
             context["scenes"] = result
@@ -398,13 +678,22 @@ class WorkflowRuntime:
                 source_start, source_end = scene["source_start"], scene["source_end"]
                 for evidence_id in scene["evidence_ids"]:
                     entry = Evidence(
-                        evidence_id=evidence_id, script_id=context["script_id"], scene_id=scene["scene_id"],
-                        source_start=source_start, source_end=source_end, source_text=scene["source_text"],
+                        evidence_id=evidence_id,
+                        script_id=context["script_id"],
+                        scene_id=scene["scene_id"],
+                        source_start=source_start,
+                        source_end=source_end,
+                        source_text=scene["source_text"],
                         content_hash=content_hash(scene["source_text"]),
                     )
                     self.repository.create_evidence(
-                        id=entry.evidence_id, run_id=run_id, script_id=entry.script_id, scene_id=entry.scene_id,
-                        source_start=entry.source_start, source_end=entry.source_end, source_text=entry.source_text,
+                        id=entry.evidence_id,
+                        run_id=run_id,
+                        script_id=entry.script_id,
+                        scene_id=entry.scene_id,
+                        source_start=entry.source_start,
+                        source_end=entry.source_end,
+                        source_text=entry.source_text,
                         content_hash=entry.content_hash,
                     )
                     evidence.append(entry.model_dump(mode="json"))
@@ -436,8 +725,15 @@ class WorkflowRuntime:
             "generate_storyboard": ["script_text", "scenes", "facts", "revision"],
             "validate_storyboard": ["shots", "scenes", "evidence", "revision"],
             "wait_for_human_review": ["storyboard", "revision"],
-            "revise_rejected_scenes": ["script_text", "scenes", "facts", "rejected_scene_ids", "revision"],
-            "adopt_result": ["storyboard"], "export_artifacts": ["storyboard"],
+            "revise_rejected_scenes": [
+                "script_text",
+                "scenes",
+                "facts",
+                "rejected_scene_ids",
+                "revision",
+            ],
+            "adopt_result": ["storyboard"],
+            "export_artifacts": ["storyboard"],
         }.get(step_name)
         if keys is None:
             # Generic adapters can choose their own context shape. Hashing the
@@ -445,26 +741,50 @@ class WorkflowRuntime:
             return dict(context)
         return {key: context.get(key) for key in keys}
 
-    def _advance(self, run_id: str, step_name: str, context: dict[str, Any], artifact_id: str) -> None:
+    def _advance(
+        self, run_id: str, step_name: str, context: dict[str, Any], artifact_id: str
+    ) -> None:
         self.repository.update_run(run_id, current_step=self._next_step(step_name))
 
-    def _checkpoint(self, run_id: str, step_name: str, context: dict[str, Any], artifact_ids: list[str]) -> None:
+    def _checkpoint(
+        self, run_id: str, step_name: str, context: dict[str, Any], artifact_ids: list[str]
+    ) -> None:
         previous = self.repository.latest_checkpoint(run_id)
         self.repository.create_checkpoint(
-            id=stable_id("checkpoint", run_id, (previous.sequence_no + 1 if previous else 1)), run_id=run_id,
-            sequence_no=(previous.sequence_no + 1 if previous else 1), step_name=self._next_step(step_name) or step_name,
-            snapshot_json=context, artifact_ids=artifact_ids,
+            id=stable_id("checkpoint", run_id, (previous.sequence_no + 1 if previous else 1)),
+            run_id=run_id,
+            sequence_no=(previous.sequence_no + 1 if previous else 1),
+            step_name=self._next_step(step_name) or step_name,
+            snapshot_json=context,
+            artifact_ids=artifact_ids,
         )
 
-    def _create_artifact(self, *, run_id: str | None, artifact_type: str, value: Any, schema_version: str, parents: list[str | None], metadata: dict[str, Any]) -> Any:
+    def _create_artifact(
+        self,
+        *,
+        run_id: str | None,
+        artifact_type: str,
+        value: Any,
+        schema_version: str,
+        parents: list[str | None],
+        metadata: dict[str, Any],
+    ) -> Any:
         clean_parents = [parent for parent in parents if parent]
         serialized = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, default=str)
-        artifact_id = stable_id("artifact", run_id or "global", artifact_type, content_hash(value), *clean_parents)
+        artifact_id = stable_id(
+            "artifact", run_id or "global", artifact_type, content_hash(value), *clean_parents
+        )
         uri = self.artifacts.put(artifact_id, serialized)
         return self.repository.create_artifact(
-            id=artifact_id, run_id=run_id, artifact_type=artifact_type, content_hash=content_hash(value),
-            schema_version=schema_version, content_uri=uri, content=serialized,
-            parent_artifact_ids=clean_parents, metadata_json=metadata,
+            id=artifact_id,
+            run_id=run_id,
+            artifact_type=artifact_type,
+            content_hash=content_hash(value),
+            schema_version=schema_version,
+            content_uri=uri,
+            content=serialized,
+            parent_artifact_ids=clean_parents,
+            metadata_json=metadata,
         )
 
     def _set_run_status(self, run_id: str, target: RunStatus, *, reason: str) -> None:
@@ -474,13 +794,25 @@ class WorkflowRuntime:
             try:
                 assert_run_transition(current, target)
             except InvalidTransition:
-                self.repository.create_event(run_id, "run.illegal_transition", {"from": current.value, "to": target.value, "reason": reason})
+                self.repository.create_event(
+                    run_id,
+                    "run.illegal_transition",
+                    {"from": current.value, "to": target.value, "reason": reason},
+                )
                 raise
             self.repository.update_run(run_id, status=target.value)
-            self.repository.create_event(run_id, "run.status_changed", {"from": current.value, "to": target.value, "reason": reason})
+            self.repository.create_event(
+                run_id,
+                "run.status_changed",
+                {"from": current.value, "to": target.value, "reason": reason},
+            )
 
     def _set_step(self, step_id: str, target: StepStatus, **fields: Any) -> None:
-        step = self.repository.get_step_by_id(step_id) if hasattr(self.repository, "get_step_by_id") else None
+        step = (
+            self.repository.get_step_by_id(step_id)
+            if hasattr(self.repository, "get_step_by_id")
+            else None
+        )
         if step is None:
             with self.database.session() as session:
                 step = session.get(StepExecutionModel, step_id)
@@ -492,7 +824,8 @@ class WorkflowRuntime:
                 assert_step_transition(current, target)
             except InvalidTransition:
                 self.repository.create_event(
-                    step.run_id, "step.illegal_transition",
+                    step.run_id,
+                    "step.illegal_transition",
                     {"step": step.step_name, "from": current.value, "to": target.value},
                     step_name=step.step_name,
                 )
@@ -509,6 +842,7 @@ class WorkflowRuntime:
     def _review(self, review_id: str):
         with self.database.session() as session:
             from .db import ReviewTaskModel
+
             review = session.get(ReviewTaskModel, review_id)
             if review is None:
                 raise KeyError(f"review not found: {review_id}")
@@ -521,7 +855,9 @@ class WorkflowRuntime:
             return None
         return self._step_names[index + 1] if index + 1 < len(self._step_names) else None
 
-    def _ordered_steps(self, run_id: str, *, selective_retry: bool = False) -> list[StepExecutionModel]:
+    def _ordered_steps(
+        self, run_id: str, *, selective_retry: bool = False
+    ) -> list[StepExecutionModel]:
         order = {name: index for index, name in enumerate(self._step_names)}
         if selective_retry and "validate_storyboard" in order and "revise_rejected_scenes" in order:
             # The declared workflow order remains stable for a first run. A
@@ -529,7 +865,9 @@ class WorkflowRuntime:
             # new storyboard before opening the next review gate.
             order["revise_rejected_scenes"] = len(order)
             order["validate_storyboard"] = len(order) + 1
-        return sorted(self.repository.get_steps(run_id), key=lambda step: order.get(step.step_name, 999))
+        return sorted(
+            self.repository.get_steps(run_id), key=lambda step: order.get(step.step_name, 999)
+        )
 
     def _previous_step(self, step_name: str) -> str | None:
         try:

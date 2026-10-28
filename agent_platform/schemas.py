@@ -114,7 +114,9 @@ class RunCreateRequest(BaseModel):
     script: str = Field(min_length=1)
     script_id: str = "script-1"
     title: str = "Untitled"
-    model_mode: Literal["success", "invalid_output", "timeout", "model_error", "unknown"] = "success"
+    model_mode: Literal["success", "invalid_output", "timeout", "model_error", "unknown"] = (
+        "success"
+    )
     idempotency_key: Optional[str] = None
 
 

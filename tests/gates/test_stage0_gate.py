@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -11,10 +10,20 @@ def test_stage0_reference_documents_exist():
 
 
 def test_platform_has_no_reference_or_rag_path_dependency():
-    source = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "agent_platform").rglob("*.py"))
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "agent_platform").rglob("*.py")
+    )
     forbidden = (
-        "zhongwen-shortdrama", "agent1", "D:\\AI\\Chinese", "faiss", "chromadb",
-        "milvus", "embedding", "graphrag", "tavily", "mcp",
+        "zhongwen-shortdrama",
+        "agent1",
+        "D:\\AI\\Chinese",
+        "faiss",
+        "chromadb",
+        "milvus",
+        "embedding",
+        "graphrag",
+        "tavily",
+        "mcp",
     )
     lowered = source.lower()
     assert not [token for token in forbidden if token.lower() in lowered]

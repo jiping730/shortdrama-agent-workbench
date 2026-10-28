@@ -43,12 +43,20 @@ class InjectedWorkflow:
 
 def test_workflow_adapter_contract_contains_all_runtime_hooks() -> None:
     assert set(REQUIRED_ADAPTER_METHODS) == {
-        "register", "validate", "start", "resume", "execute_step", "recover",
+        "register",
+        "validate",
+        "start",
+        "resume",
+        "execute_step",
+        "recover",
     }
 
     injected = InjectedWorkflow()
     adapter = LegacyWorkflowAdapter(
-        injected, name="injected-demo", version="1.0.0", steps=["demo_step"],
+        injected,
+        name="injected-demo",
+        version="1.0.0",
+        steps=["demo_step"],
     )
     assert_workflow_adapter(adapter)
     assert adapter.start({"x": 1})["started_by"] == "injected-workflow"
@@ -57,33 +65,44 @@ def test_workflow_adapter_contract_contains_all_runtime_hooks() -> None:
     assert adapter.execute_step("demo_step", {"script_id": "s-1"})["value"] == "s-1"
     assert adapter.recover({"x": 1})["recovered_by"] == "injected-workflow"
     assert [name for name, _ in injected.calls] == [
-        "start", "resume", "validate", "execute_step", "recover",
+        "start",
+        "resume",
+        "validate",
+        "execute_step",
+        "recover",
     ]
 
 
 def test_runtime_persists_and_executes_an_injected_workflow(tmp_path) -> None:
     injected = InjectedWorkflow()
     adapter = LegacyWorkflowAdapter(
-        injected, name="injected-demo", version="1.0.0", steps=["demo_step"],
+        injected,
+        name="injected-demo",
+        version="1.0.0",
+        steps=["demo_step"],
     )
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'adapter.db'}",
         artifact_dir=tmp_path / "artifacts",
     )
     runtime = WorkflowRuntime(
-        database=Database(settings), settings=settings, model=FakeModel(), adapter=adapter,
+        database=Database(settings),
+        settings=settings,
+        model=FakeModel(),
+        adapter=adapter,
     )
 
     result = runtime.create_run(project_id="adapter-project", script="hello")
 
     assert result.status == RunStatus.COMPLETED.value
     assert [name for name, _ in injected.calls] == [
-        "start", "execute_step", "validate",
+        "start",
+        "execute_step",
+        "validate",
     ]
     assert runtime.workflow_definition.name == "injected-demo"
     assert any(
-        definition.name == "injected-demo"
-        for definition, _ in runtime.repository.list_workflows()
+        definition.name == "injected-demo" for definition, _ in runtime.repository.list_workflows()
     )
     assert runtime.repository.get_events(result.run_id)[1].event_type == "workflow.started"
 
@@ -95,14 +114,22 @@ def test_runtime_calls_resume_and_recover_hooks_at_the_durable_boundary(tmp_path
         artifact_dir=tmp_path / "artifacts",
     )
     adapter = LegacyWorkflowAdapter(
-        first, name="injected-demo", version="1.0.0", steps=["demo_step"],
+        first,
+        name="injected-demo",
+        version="1.0.0",
+        steps=["demo_step"],
     )
     runtime = WorkflowRuntime(
-        database=Database(settings), settings=settings, model=FakeModel(), adapter=adapter,
+        database=Database(settings),
+        settings=settings,
+        model=FakeModel(),
+        adapter=adapter,
     )
     with pytest.raises(SimulatedInterruption):
         runtime.create_run(
-            project_id="lifecycle-project", script="hello", stop_after_step="demo_step",
+            project_id="lifecycle-project",
+            script="hello",
+            stop_after_step="demo_step",
         )
 
     resumed = runtime.resume(runtime.repository.list_runs(project_id="lifecycle-project")[0].id)
@@ -111,19 +138,26 @@ def test_runtime_calls_resume_and_recover_hooks_at_the_durable_boundary(tmp_path
 
     second = InjectedWorkflow()
     adapter2 = LegacyWorkflowAdapter(
-        second, name="recover-demo", version="1.0.0", steps=["demo_step"],
+        second,
+        name="recover-demo",
+        version="1.0.0",
+        steps=["demo_step"],
     )
     settings2 = Settings(
         database_url=f"sqlite:///{tmp_path / 'recover.db'}",
         artifact_dir=tmp_path / "recover-artifacts",
     )
     runtime2 = WorkflowRuntime(
-        database=Database(settings2), settings=settings2,
-        model=FakeModel(), adapter=adapter2,
+        database=Database(settings2),
+        settings=settings2,
+        model=FakeModel(),
+        adapter=adapter2,
     )
     with pytest.raises(SimulatedInterruption):
         runtime2.create_run(
-            project_id="recover-project", script="hello", stop_after_step="demo_step",
+            project_id="recover-project",
+            script="hello",
+            stop_after_step="demo_step",
         )
     recover_run_id = runtime2.repository.list_runs(project_id="recover-project")[0].id
     recovered = runtime2.recover(recover_run_id)

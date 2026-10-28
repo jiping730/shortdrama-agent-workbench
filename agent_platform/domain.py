@@ -54,22 +54,52 @@ RUN_TRANSITIONS: dict[RunStatus, set[RunStatus]] = {
         RunStatus.CANCELLED,
         RunStatus.NEEDS_RECOVERY,
     },
-    RunStatus.PAUSED: {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.CANCELLED, RunStatus.NEEDS_RECOVERY},
-    RunStatus.WAITING_REVIEW: {RunStatus.QUEUED, RunStatus.PAUSED, RunStatus.CANCELLED, RunStatus.NEEDS_RECOVERY},
+    RunStatus.PAUSED: {
+        RunStatus.QUEUED,
+        RunStatus.RUNNING,
+        RunStatus.CANCELLED,
+        RunStatus.NEEDS_RECOVERY,
+    },
+    RunStatus.WAITING_REVIEW: {
+        RunStatus.QUEUED,
+        RunStatus.PAUSED,
+        RunStatus.CANCELLED,
+        RunStatus.NEEDS_RECOVERY,
+    },
     RunStatus.FAILED: {RunStatus.QUEUED, RunStatus.CANCELLED, RunStatus.NEEDS_RECOVERY},
-    RunStatus.NEEDS_RECOVERY: {RunStatus.QUEUED, RunStatus.PAUSED, RunStatus.CANCELLED, RunStatus.FAILED},
+    RunStatus.NEEDS_RECOVERY: {
+        RunStatus.QUEUED,
+        RunStatus.PAUSED,
+        RunStatus.CANCELLED,
+        RunStatus.FAILED,
+    },
     RunStatus.COMPLETED: set(),
     RunStatus.CANCELLED: set(),
 }
 
 STEP_TRANSITIONS: dict[StepStatus, set[StepStatus]] = {
-    StepStatus.PENDING: {StepStatus.QUEUED, StepStatus.RUNNING, StepStatus.SKIPPED, StepStatus.FAILED},
+    StepStatus.PENDING: {
+        StepStatus.QUEUED,
+        StepStatus.RUNNING,
+        StepStatus.SKIPPED,
+        StepStatus.FAILED,
+    },
     StepStatus.QUEUED: {StepStatus.RUNNING, StepStatus.FAILED, StepStatus.SKIPPED},
-    StepStatus.RUNNING: {StepStatus.SUCCEEDED, StepStatus.FAILED, StepStatus.WAITING_REVIEW, StepStatus.UNKNOWN},
+    StepStatus.RUNNING: {
+        StepStatus.SUCCEEDED,
+        StepStatus.FAILED,
+        StepStatus.WAITING_REVIEW,
+        StepStatus.UNKNOWN,
+    },
     StepStatus.SUCCEEDED: {StepStatus.PENDING, StepStatus.WAITING_REVIEW},
     StepStatus.FAILED: {StepStatus.QUEUED, StepStatus.RUNNING, StepStatus.UNKNOWN},
     StepStatus.SKIPPED: set(),
-    StepStatus.WAITING_REVIEW: {StepStatus.QUEUED, StepStatus.RUNNING, StepStatus.SUCCEEDED, StepStatus.FAILED},
+    StepStatus.WAITING_REVIEW: {
+        StepStatus.QUEUED,
+        StepStatus.RUNNING,
+        StepStatus.SUCCEEDED,
+        StepStatus.FAILED,
+    },
     StepStatus.UNKNOWN: {StepStatus.QUEUED, StepStatus.FAILED},
 }
 

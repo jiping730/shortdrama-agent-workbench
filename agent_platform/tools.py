@@ -41,29 +41,73 @@ class ToolRegistry:
         self._definitions[definition.name] = definition
 
     def describe(self) -> list[dict[str, Any]]:
-        return [{
-            "name": item.name, "version": item.version, "timeout_seconds": item.timeout_seconds,
-            "retryable": item.retryable, "idempotent": item.idempotent,
-        } for item in self._definitions.values()]
+        return [
+            {
+                "name": item.name,
+                "version": item.version,
+                "timeout_seconds": item.timeout_seconds,
+                "retryable": item.retryable,
+                "idempotent": item.idempotent,
+            }
+            for item in self._definitions.values()
+        ]
 
-    def execute(self, name: str, payload: dict[str, Any], *, idempotency_key: Optional[str] = None) -> dict[str, Any]:
+    def execute(
+        self, name: str, payload: dict[str, Any], *, idempotency_key: Optional[str] = None
+    ) -> dict[str, Any]:
         definition = self._definitions.get(name)
         if definition is None:
-            raise ToolExecutionError(ErrorCode.TOOL_ERROR.value, f"unknown tool: {name}", tool_call_id="unknown")
-        call_id = stable_id("toolcall", name, definition.version, idempotency_key or content_hash(payload))
+            raise ToolExecutionError(
+                ErrorCode.TOOL_ERROR.value, f"unknown tool: {name}", tool_call_id="unknown"
+            )
+        call_id = stable_id(
+            "toolcall", name, definition.version, idempotency_key or content_hash(payload)
+        )
         key = idempotency_key or call_id
         if definition.idempotent and key in self._successful:
             return self._successful[key].model_dump(mode="json")
-        self.audit_log.append({"tool_call_id": call_id, "tool_name": name, "status": "started", "input_hash": content_hash(payload)})
+        self.audit_log.append(
+            {
+                "tool_call_id": call_id,
+                "tool_name": name,
+                "status": "started",
+                "input_hash": content_hash(payload),
+            }
+        )
         try:
             typed_input = definition.input_model.model_validate(payload)
             typed_output = definition.output_model.model_validate(definition.handler(typed_input))
         except ValidationError as exc:
-            self.audit_log.append({"tool_call_id": call_id, "tool_name": name, "status": "failed", "error_code": ErrorCode.SCHEMA_VALIDATION_FAILED.value})
-            raise ToolExecutionError(ErrorCode.SCHEMA_VALIDATION_FAILED.value, str(exc), tool_call_id=call_id) from exc
+            self.audit_log.append(
+                {
+                    "tool_call_id": call_id,
+                    "tool_name": name,
+                    "status": "failed",
+                    "error_code": ErrorCode.SCHEMA_VALIDATION_FAILED.value,
+                }
+            )
+            raise ToolExecutionError(
+                ErrorCode.SCHEMA_VALIDATION_FAILED.value, str(exc), tool_call_id=call_id
+            ) from exc
         except Exception as exc:
-            self.audit_log.append({"tool_call_id": call_id, "tool_name": name, "status": "failed", "error_code": ErrorCode.TOOL_ERROR.value})
-            raise ToolExecutionError(ErrorCode.TOOL_ERROR.value, str(exc), tool_call_id=call_id) from exc
+            self.audit_log.append(
+                {
+                    "tool_call_id": call_id,
+                    "tool_name": name,
+                    "status": "failed",
+                    "error_code": ErrorCode.TOOL_ERROR.value,
+                }
+            )
+            raise ToolExecutionError(
+                ErrorCode.TOOL_ERROR.value, str(exc), tool_call_id=call_id
+            ) from exc
         self._successful[key] = typed_output
-        self.audit_log.append({"tool_call_id": call_id, "tool_name": name, "status": "succeeded", "output_hash": content_hash(typed_output.model_dump(mode="json"))})
+        self.audit_log.append(
+            {
+                "tool_call_id": call_id,
+                "tool_name": name,
+                "status": "succeeded",
+                "output_hash": content_hash(typed_output.model_dump(mode="json")),
+            }
+        )
         return typed_output.model_dump(mode="json")

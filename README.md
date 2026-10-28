@@ -35,7 +35,7 @@ flowchart LR
   Runtime --> Audit[Events / Attempts / ExternalCalls]
 ```
 
-更完整的模块边界见 [docs/architecture.md](docs/architecture.md)，状态表见 [docs/state-machine.md](docs/state-machine.md)，恢复策略见 [docs/recovery.md](docs/recovery.md)。
+文档入口见 [docs/README.md](docs/README.md)；更完整的模块边界见 [docs/architecture.md](docs/architecture.md)，状态表见 [docs/state-machine.md](docs/state-machine.md)，恢复策略见 [docs/recovery.md](docs/recovery.md)。
 
 ## 数据模型
 
@@ -93,6 +93,8 @@ python -m agent_platform.cli export html --run-id RUN_ID --output exports/run.ht
 ```bash
 python --version  # Python 3.9+
 python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m ruff format --check .
 python -m pytest -q --basetemp=.pytest-tmp
 docker compose up --build
 ```

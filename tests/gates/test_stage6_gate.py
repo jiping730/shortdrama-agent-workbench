@@ -9,7 +9,6 @@ from agent_platform.domain import ErrorCode, RunStatus
 from agent_platform.providers import FakeModel
 from agent_platform.runtime import WorkflowRuntime
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = "SCENE 1: Room\nA enters.\n\nSCENE 2: Hall\nB waits."
 
@@ -38,14 +37,20 @@ def test_fakemodel_all_modes_are_deterministic_and_structured(tmp_path) -> None:
         assert model.calls[0]["operation"] == "generate_facts"
         if mode == "success":
             assert [call["operation"] for call in model.calls[:2]] == [
-                "generate_facts", "generate_storyboard",
+                "generate_facts",
+                "generate_storyboard",
             ]
         else:
             assert len(model.calls) == 1
         if mode == "invalid_output":
-            assert runtime.repository.get_run(result.run_id).error_code == ErrorCode.SCHEMA_VALIDATION_FAILED.value
+            assert (
+                runtime.repository.get_run(result.run_id).error_code
+                == ErrorCode.SCHEMA_VALIDATION_FAILED.value
+            )
         if mode == "model_error":
-            assert runtime.repository.get_run(result.run_id).error_code == ErrorCode.MODEL_ERROR.value
+            assert (
+                runtime.repository.get_run(result.run_id).error_code == ErrorCode.MODEL_ERROR.value
+            )
         if mode in {"timeout", "unknown"}:
             assert runtime.repository.get_external_calls(result.run_id)[0].status == "unknown"
 
@@ -64,16 +69,40 @@ def test_input_artifact_foreign_key_order_is_valid(tmp_path) -> None:
 
 def test_engineering_files_and_documents_are_present_and_coherent() -> None:
     required_files = [
-        "pyproject.toml", ".env.example", "Dockerfile", "docker-compose.yml", "alembic.ini",
-        ".pre-commit-config.yaml", ".github/workflows/ci.yml", "README.md", "Makefile",
-        "docs/architecture.md", "docs/state-machine.md", "docs/recovery.md", "docs/extension-guide.md",
-        "docs/security-scanning.md", "docs/stage-gates.md", "migrations/versions/0001_initial.py",
+        "pyproject.toml",
+        ".env.example",
+        "Dockerfile",
+        "docker-compose.yml",
+        "alembic.ini",
+        ".pre-commit-config.yaml",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "Makefile",
+        "docs/architecture.md",
+        "docs/README.md",
+        "docs/state-machine.md",
+        "docs/recovery.md",
+        "docs/extension-guide.md",
+        "docs/security-scanning.md",
+        "docs/stage-gates.md",
+        "migrations/versions/0001_initial.py",
         "examples/sample_script.txt",
     ]
     for relative in required_files:
         assert (ROOT / relative).exists(), relative
     readme = (ROOT / "README.md").read_text(encoding="utf-8").lower()
-    for token in ("架构", "数据模型", "审核", "恢复", "启动", "测试", "环境变量", "真实模型", "限制", "未来"):
+    for token in (
+        "架构",
+        "数据模型",
+        "审核",
+        "恢复",
+        "启动",
+        "测试",
+        "环境变量",
+        "真实模型",
+        "限制",
+        "未来",
+    ):
         assert token in readme
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "setup-python" in ci and "pytest" in ci and "compileall" in ci and "gitleaks" in ci
@@ -92,7 +121,11 @@ def test_repository_has_no_high_confidence_secret_or_reference_path_patterns() -
     ignored = {".git", ".pytest_cache", ".pytest-tmp", "data", "exports"}
     suffixes = {".py", ".md", ".yml", ".yaml", ".toml", ".ini", ".env", ".example", ".txt"}
     for path in ROOT.rglob("*"):
-        if not path.is_file() or any(part in ignored for part in path.parts) or path.suffix not in suffixes:
+        if (
+            not path.is_file()
+            or any(part in ignored for part in path.parts)
+            or path.suffix not in suffixes
+        ):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         assert not any(pattern.search(text) for pattern in patterns), path

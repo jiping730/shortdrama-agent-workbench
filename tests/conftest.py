@@ -12,7 +12,9 @@ from agent_platform.runtime import WorkflowRuntime
 
 @pytest.fixture()
 def runtime(tmp_path: Path) -> WorkflowRuntime:
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", artifact_dir=tmp_path / "artifacts")
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'test.db'}", artifact_dir=tmp_path / "artifacts"
+    )
     return WorkflowRuntime(database=Database(settings), settings=settings, model=FakeModel())
 
 

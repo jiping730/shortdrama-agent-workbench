@@ -31,7 +31,11 @@ class S3ArtifactStore:
     """S3-compatible object store adapter with an optional boto3 dependency."""
 
     def __init__(
-        self, *, bucket: str, prefix: str = "artifacts", client: Any | None = None,
+        self,
+        *,
+        bucket: str,
+        prefix: str = "artifacts",
+        client: Any | None = None,
         endpoint_url: str | None = None,
     ) -> None:
         if not bucket.strip():
@@ -55,7 +59,9 @@ class S3ArtifactStore:
         key = self._key(artifact_id)
         try:
             self.client.put_object(
-                Bucket=self.bucket, Key=key, Body=content.encode("utf-8"),
+                Bucket=self.bucket,
+                Key=key,
+                Body=content.encode("utf-8"),
                 ContentType="application/json; charset=utf-8",
             )
         except Exception as exc:  # pragma: no cover - provider-specific failure
@@ -72,7 +78,8 @@ def build_artifact_store(settings: Any) -> ArtifactStore:
         if not settings.s3_bucket:
             raise ValueError("S3_ARTIFACT_BUCKET is required when ARTIFACT_BACKEND=s3")
         return S3ArtifactStore(
-            bucket=settings.s3_bucket, prefix=settings.s3_prefix,
+            bucket=settings.s3_bucket,
+            prefix=settings.s3_prefix,
             endpoint_url=settings.s3_endpoint_url,
         )
     raise ValueError(f"unsupported artifact backend: {settings.artifact_backend}")

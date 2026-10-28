@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
 from time import monotonic
 from typing import Iterator
-from contextlib import contextmanager
 
 
 class RuntimeMetrics:
@@ -30,5 +30,8 @@ class RuntimeMetrics:
     def snapshot(self) -> dict[str, object]:
         return {
             "counters": dict(self.counters),
-            "durations_ms": {name: {"count": len(values), "total": sum(values), "max": max(values)} for name, values in self.durations_ms.items()},
+            "durations_ms": {
+                name: {"count": len(values), "total": sum(values), "max": max(values)}
+                for name, values in self.durations_ms.items()
+            },
         }

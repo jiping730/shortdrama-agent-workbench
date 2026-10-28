@@ -16,10 +16,14 @@ class LegacyWorkflowAdapter:
     workflow implementation.
     """
 
-    def __init__(self, workflow: Any, *, name: str, version: str, steps: list[str], description: str = "") -> None:
+    def __init__(
+        self, workflow: Any, *, name: str, version: str, steps: list[str], description: str = ""
+    ) -> None:
         self.workflow = workflow
         self.definition = WorkflowDefinition(
-            name=name, version=version, description=description,
+            name=name,
+            version=version,
+            description=description,
             steps=tuple(StepSpec(step, step.replace("_", " ").title()) for step in steps),
         )
 

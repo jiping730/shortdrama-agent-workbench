@@ -1,6 +1,11 @@
 from agent_platform.domain import (
-    InvalidTransition, RunStatus, StepStatus, assert_run_transition,
-    assert_step_transition, content_hash, stable_id,
+    InvalidTransition,
+    RunStatus,
+    StepStatus,
+    assert_run_transition,
+    assert_step_transition,
+    content_hash,
+    stable_id,
 )
 
 

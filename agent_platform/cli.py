@@ -21,7 +21,9 @@ def _emit(value: Any, as_json: bool) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="agent-platform", description="Agent Workflow Platform control-plane CLI")
+    parser = argparse.ArgumentParser(
+        prog="agent-platform", description="Agent Workflow Platform control-plane CLI"
+    )
     parser.add_argument("--json", action="store_true", help="stable JSON output")
     sub = parser.add_subparsers(dest="group", required=True)
 
@@ -34,7 +36,11 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--script-file", type=Path)
     create.add_argument("--script-id", default="script-1")
     create.add_argument("--title", default="Untitled")
-    create.add_argument("--model-mode", choices=["success", "invalid_output", "timeout", "model_error", "unknown"], default="success")
+    create.add_argument(
+        "--model-mode",
+        choices=["success", "invalid_output", "timeout", "model_error", "unknown"],
+        default="success",
+    )
     for name in ["show", "pause", "resume", "cancel"]:
         cmd = run_sub.add_parser(name)
         cmd.add_argument("--run-id", required=True)
@@ -78,9 +84,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.group == "workflow":
             definition = runtime.workflow_definition
             if args.action == "list":
-                _emit({"items": [{"name": definition.name, "version": definition.version}]}, as_json)
+                _emit(
+                    {"items": [{"name": definition.name, "version": definition.version}]}, as_json
+                )
             else:
-                _emit({"name": definition.name, "version": definition.version, "description": definition.description, "steps": [step.__dict__ for step in definition.steps]}, as_json)
+                _emit(
+                    {
+                        "name": definition.name,
+                        "version": definition.version,
+                        "description": definition.description,
+                        "steps": [step.__dict__ for step in definition.steps],
+                    },
+                    as_json,
+                )
             return 0
         if args.group == "run":
             if args.action == "create":
@@ -89,28 +105,70 @@ def main(argv: list[str] | None = None) -> int:
                     script = args.script_file.read_text(encoding="utf-8")
                 if not script:
                     raise ValueError("one of --script or --script-file is required")
-                result = runtime.create_run(project_id=args.project_id, workspace_id=args.workspace_id, script=script, script_id=args.script_id, title=args.title, model_mode=args.model_mode)
-                _emit({"run_id": result.run_id, "status": result.status, "paused_for_review": result.paused_for_review}, as_json)
+                result = runtime.create_run(
+                    project_id=args.project_id,
+                    workspace_id=args.workspace_id,
+                    script=script,
+                    script_id=args.script_id,
+                    title=args.title,
+                    model_mode=args.model_mode,
+                )
+                _emit(
+                    {
+                        "run_id": result.run_id,
+                        "status": result.status,
+                        "paused_for_review": result.paused_for_review,
+                    },
+                    as_json,
+                )
             elif args.action == "show":
                 _emit(run_payload(runtime.repository, args.run_id), as_json)
             elif args.action == "list":
-                _emit({"items": [runtime.repository.serialize_model(run) for run in runtime.repository.list_runs(project_id=args.project_id)]}, as_json)
+                _emit(
+                    {
+                        "items": [
+                            runtime.repository.serialize_model(run)
+                            for run in runtime.repository.list_runs(project_id=args.project_id)
+                        ]
+                    },
+                    as_json,
+                )
             elif args.action == "pause":
-                result = runtime.pause(args.run_id); _emit(result.__dict__, as_json)
+                result = runtime.pause(args.run_id)
+                _emit(result.__dict__, as_json)
             elif args.action == "resume":
-                result = runtime.resume(args.run_id); _emit(result.__dict__, as_json)
+                result = runtime.resume(args.run_id)
+                _emit(result.__dict__, as_json)
             elif args.action == "cancel":
-                result = runtime.cancel(args.run_id); _emit(result.__dict__, as_json)
+                result = runtime.cancel(args.run_id)
+                _emit(result.__dict__, as_json)
             elif args.action == "retry":
-                result = runtime.retry(args.run_id, step_name=args.step_name, scene_ids=args.scene_id); _emit(result.__dict__, as_json)
+                result = runtime.retry(
+                    args.run_id, step_name=args.step_name, scene_ids=args.scene_id
+                )
+                _emit(result.__dict__, as_json)
             return 0
         if args.group == "review":
             if args.action == "list":
-                _emit({"items": [runtime.repository.serialize_model(item) for item in runtime.repository.get_reviews(args.run_id)]}, as_json)
+                _emit(
+                    {
+                        "items": [
+                            runtime.repository.serialize_model(item)
+                            for item in runtime.repository.get_reviews(args.run_id)
+                        ]
+                    },
+                    as_json,
+                )
             elif args.action == "approve":
-                _emit(runtime.approve_review(args.review_id, args.reviewer, args.comment).__dict__, as_json)
+                _emit(
+                    runtime.approve_review(args.review_id, args.reviewer, args.comment).__dict__,
+                    as_json,
+                )
             else:
-                _emit(runtime.reject_review(args.review_id, args.reviewer, args.comment).__dict__, as_json)
+                _emit(
+                    runtime.reject_review(args.review_id, args.reviewer, args.comment).__dict__,
+                    as_json,
+                )
             return 0
         if args.group == "export":
             if args.action == "json":
@@ -122,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
             _emit({"status": "succeeded", "output": str(output)}, as_json)
             return 0
     except Exception as exc:
-        _emit({"status": "failed", "error": {"type": type(exc).__name__, "message": str(exc)}}, True)
+        _emit(
+            {"status": "failed", "error": {"type": type(exc).__name__, "message": str(exc)}}, True
+        )
         return 1
     return 1
 

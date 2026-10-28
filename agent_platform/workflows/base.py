@@ -61,7 +61,9 @@ REQUIRED_ADAPTER_METHODS = (
 def assert_workflow_adapter(adapter: Any) -> None:
     """Fail fast when an injected workflow does not implement the platform contract."""
 
-    missing = [name for name in REQUIRED_ADAPTER_METHODS if not callable(getattr(adapter, name, None))]
+    missing = [
+        name for name in REQUIRED_ADAPTER_METHODS if not callable(getattr(adapter, name, None))
+    ]
     if missing:
         raise TypeError(f"workflow adapter is missing required methods: {', '.join(missing)}")
     definition = adapter.register()

@@ -11,7 +11,6 @@ from agent_platform.db import Database
 from agent_platform.providers import FakeModel
 from agent_platform.runtime import WorkflowRuntime
 
-
 SCRIPT = """SCENE 1: Room
 角色：A；场景：Room；道具：key。
 A enters and waits.
@@ -30,7 +29,9 @@ def _runtime(tmp_path: Path, name: str) -> WorkflowRuntime:
     return WorkflowRuntime(database=Database(settings), settings=settings, model=FakeModel())
 
 
-def test_rest_api_and_management_dashboard_cover_run_review_recovery_surface(tmp_path, monkeypatch) -> None:
+def test_rest_api_and_management_dashboard_cover_run_review_recovery_surface(
+    tmp_path, monkeypatch
+) -> None:
     import agent_platform.api as api
 
     monkeypatch.setattr(api, "runtime", _runtime(tmp_path, "api"))
@@ -42,11 +43,17 @@ def test_rest_api_and_management_dashboard_cover_run_review_recovery_surface(tmp
     assert workflows.json()["items"][0]["name"] == "script-to-storyboard"
     assert client.get("/api/v1/workflows/script-to-storyboard").status_code == 200
     required_paths = {
-        "/api/v1/runs", "/api/v1/runs/{run_id}", "/api/v1/runs/{run_id}/pause",
-        "/api/v1/runs/{run_id}/resume", "/api/v1/runs/{run_id}/cancel",
-        "/api/v1/runs/{run_id}/retry", "/api/v1/runs/{run_id}/events",
-        "/api/v1/runs/{run_id}/artifacts", "/api/v1/runs/{run_id}/reviews",
-        "/api/v1/reviews/{review_id}/approve", "/api/v1/reviews/{review_id}/reject",
+        "/api/v1/runs",
+        "/api/v1/runs/{run_id}",
+        "/api/v1/runs/{run_id}/pause",
+        "/api/v1/runs/{run_id}/resume",
+        "/api/v1/runs/{run_id}/cancel",
+        "/api/v1/runs/{run_id}/retry",
+        "/api/v1/runs/{run_id}/events",
+        "/api/v1/runs/{run_id}/artifacts",
+        "/api/v1/runs/{run_id}/reviews",
+        "/api/v1/reviews/{review_id}/approve",
+        "/api/v1/reviews/{review_id}/reject",
     }
     assert required_paths <= set(client.get("/openapi.json").json()["paths"])
 
@@ -62,16 +69,36 @@ def test_rest_api_and_management_dashboard_cover_run_review_recovery_surface(tmp
     assert client.get(f"/api/v1/runs/{run_id}/artifacts").status_code == 200
     reviews = client.get(f"/api/v1/runs/{run_id}/reviews").json()["items"]
     assert len(reviews) == 2
-    assert any(item["kind"] == "review" for item in client.get("/api/v1/error-inbox").json()["items"])
+    assert any(
+        item["kind"] == "review" for item in client.get("/api/v1/error-inbox").json()["items"]
+    )
 
-    assert client.post(f"/api/v1/reviews/{reviews[0]['id']}/reject", json={"reviewer": "api", "comment": "revise"}).status_code == 200
-    assert client.post(f"/api/v1/reviews/{reviews[1]['id']}/approve", json={"reviewer": "api"}).status_code == 200
-    retry = client.post(f"/api/v1/runs/{run_id}/retry", json={"scene_ids": [reviews[0]["scene_id"]]})
+    assert (
+        client.post(
+            f"/api/v1/reviews/{reviews[0]['id']}/reject",
+            json={"reviewer": "api", "comment": "revise"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/v1/reviews/{reviews[1]['id']}/approve", json={"reviewer": "api"}
+        ).status_code
+        == 200
+    )
+    retry = client.post(
+        f"/api/v1/runs/{run_id}/retry", json={"scene_ids": [reviews[0]["scene_id"]]}
+    )
     assert retry.status_code == 200
     revised_reviews = client.get(f"/api/v1/runs/{run_id}/reviews").json()["items"]
     pending = [item for item in revised_reviews if item["status"] == "pending"]
     assert len(pending) == 1
-    assert client.post(f"/api/v1/reviews/{pending[0]['id']}/approve", json={"reviewer": "api"}).status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/reviews/{pending[0]['id']}/approve", json={"reviewer": "api"}
+        ).status_code
+        == 200
+    )
     assert client.get(f"/api/v1/runs/{run_id}").json()["run"]["status"] == "completed"
 
     dashboard = client.get("/")
@@ -90,7 +117,9 @@ def test_cli_commands_and_exports_are_machine_consumable(tmp_path, monkeypatch, 
     assert cli_main(["--json", "workflow", "describe", "--name", "script-to-storyboard"]) == 0
     assert json.loads(capsys.readouterr().out)["steps"]
 
-    assert cli_main(["--json", "run", "create", "--project-id", "cli-gate", "--script", SCRIPT]) == 0
+    assert (
+        cli_main(["--json", "run", "create", "--project-id", "cli-gate", "--script", SCRIPT]) == 0
+    )
     run = json.loads(capsys.readouterr().out)
     run_id = run["run_id"]
     assert run["status"] == "waiting_review"
@@ -103,13 +132,27 @@ def test_cli_commands_and_exports_are_machine_consumable(tmp_path, monkeypatch, 
     assert len(reviews) == 2
 
     for review in reviews:
-        assert cli_main([
-            "--json", "review", "approve", "--review-id", review["id"], "--reviewer", "cli",
-        ]) == 0
+        assert (
+            cli_main(
+                [
+                    "--json",
+                    "review",
+                    "approve",
+                    "--review-id",
+                    review["id"],
+                    "--reviewer",
+                    "cli",
+                ]
+            )
+            == 0
+        )
         result = json.loads(capsys.readouterr().out)
     assert result["status"] == "completed"
 
-    assert cli_main(["--json", "run", "create", "--project-id", "cli-operator", "--script", SCRIPT]) == 0
+    assert (
+        cli_main(["--json", "run", "create", "--project-id", "cli-operator", "--script", SCRIPT])
+        == 0
+    )
     operator_run = json.loads(capsys.readouterr().out)["run_id"]
     assert cli_main(["--json", "run", "pause", "--run-id", operator_run]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "paused"
@@ -118,22 +161,51 @@ def test_cli_commands_and_exports_are_machine_consumable(tmp_path, monkeypatch, 
     assert cli_main(["--json", "run", "cancel", "--run-id", operator_run]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "cancelled"
 
-    assert cli_main([
-        "--json", "run", "create", "--project-id", "cli-retry", "--script", SCRIPT,
-        "--model-mode", "invalid_output",
-    ]) == 0
+    assert (
+        cli_main(
+            [
+                "--json",
+                "run",
+                "create",
+                "--project-id",
+                "cli-retry",
+                "--script",
+                SCRIPT,
+                "--model-mode",
+                "invalid_output",
+            ]
+        )
+        == 0
+    )
     retry_run = json.loads(capsys.readouterr().out)["run_id"]
-    assert cli_main(["--json", "run", "retry", "--run-id", retry_run, "--step-name", "extract_facts"]) == 0
+    assert (
+        cli_main(["--json", "run", "retry", "--run-id", retry_run, "--step-name", "extract_facts"])
+        == 0
+    )
     assert json.loads(capsys.readouterr().out)["status"] == "waiting_review"
 
     output_dir = tmp_path / "exports"
     for format_name, suffix in [("json", ".json"), ("csv", ".csv"), ("html", ".html")]:
         output = output_dir / f"run{suffix}"
-        assert cli_main([
-            "--json", "export", format_name, "--run-id", run_id, "--output", str(output),
-        ]) == 0
+        assert (
+            cli_main(
+                [
+                    "--json",
+                    "export",
+                    format_name,
+                    "--run-id",
+                    run_id,
+                    "--output",
+                    str(output),
+                ]
+            )
+            == 0
+        )
         response = json.loads(capsys.readouterr().out)
         assert response["status"] == "succeeded"
         assert output.exists() and output.stat().st_size > 0
-    assert json.loads((output_dir / "run.json").read_text(encoding="utf-8"))["run"]["status"] == "completed"
+    assert (
+        json.loads((output_dir / "run.json").read_text(encoding="utf-8"))["run"]["status"]
+        == "completed"
+    )
     assert "Step timeline" in (output_dir / "run.html").read_text(encoding="utf-8")

@@ -8,10 +8,18 @@ def test_versioned_api_exposes_runs_and_reviews(monkeypatch, tmp_path):
     from agent_platform.providers import FakeModel
     from agent_platform.runtime import WorkflowRuntime
 
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'api.db'}", artifact_dir=tmp_path / "artifacts")
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'api.db'}", artifact_dir=tmp_path / "artifacts"
+    )
     api.runtime = WorkflowRuntime(database=Database(settings), settings=settings, model=FakeModel())
     client = TestClient(api.app)
-    created = client.post("/api/v1/runs", json={"project_id": "api-project", "script": "SCENE 1: room\n角色：A；场景：room；道具：key."})
+    created = client.post(
+        "/api/v1/runs",
+        json={
+            "project_id": "api-project",
+            "script": "SCENE 1: room\n角色：A；场景：room；道具：key.",
+        },
+    )
     assert created.status_code == 200
     run_id = created.json()["run_id"]
     detail = client.get(f"/api/v1/runs/{run_id}")
