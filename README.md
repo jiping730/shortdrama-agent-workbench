@@ -34,6 +34,10 @@ flowchart LR
 
 更完整的模块边界见 [docs/architecture.md](docs/architecture.md)，状态表见 [docs/state-machine.md](docs/state-machine.md)，恢复策略见 [docs/recovery.md](docs/recovery.md)。
 
+## 数据模型
+
+核心链路为 `WorkflowDefinition → WorkflowVersion → Run → Task/StepExecution → Attempt → Artifact → ReviewTask → Checkpoint → RunEvent`；Evidence、ToolCall 和 ExternalCall 作为可审计的关联记录持久化。
+
 ## 一次运行示例
 
 ```bash
@@ -92,7 +96,7 @@ docker compose up --build
 
 若本机 Python/Windows 临时目录策略阻止 pytest 创建默认 temp root，项目已把基准目录固定为仓库内 `.pytest-tmp`，也可以显式传入该参数。
 
-## 配置
+## 环境变量与配置
 
 从 [.env.example](.env.example) 开始：
 

@@ -12,7 +12,7 @@
 | 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 已通过（2026-10-28） |
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 已通过（2026-10-28） |
 | 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 已通过（2026-10-28） |
-| 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 待阶段 5 通过 |
+| 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 已通过（2026-10-28） |
 | 7 可选扩展 | real provider/queue/object storage/additional workflow 各自独立验收 | 明确延期，不阻塞 v1 |
 
 ## 阶段 0 当前验收
@@ -140,3 +140,36 @@ py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage5-all
 ```
 
 阶段 5 已通过，现允许进入阶段 6。阶段 6 的 clean environment、FakeModel 全模式、Docker startup、CI 和 secret scan 仍需单独验证。
+
+## 阶段 6 当前验收
+
+已形成的证据：
+
+- `tests/gates/test_stage6_gate.py`：验证 FakeModel 的 `success`、`invalid_output`、`timeout`、`model_error`、`unknown` 五种确定性模式，工程交付文件、文档契约、CI 检查项和高置信度敏感信息/参考路径扫描。
+- `Dockerfile`：包含 `alembic.ini` 和 `migrations`，并通过 PostgreSQL extra 安装正式数据库驱动。
+- `docker-compose.yml`：PostgreSQL 健康检查、`service_healthy` 启动依赖、本机回环端口绑定和隔离数据卷。
+- `agent_platform/runtime.py`：修复 PostgreSQL 外键顺序问题；先写 Run，再写输入 Artifact，最后回填 `input_artifact_id`，SQLite 与 PostgreSQL 行为一致。
+- `.github/workflows/ci.yml`：配置 pytest、compileall 和 gitleaks CI 检查；本机未安装 gitleaks，因此不把本地检查冒充为已执行。
+
+阶段 6 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage6_gate.py -q --basetemp=.pytest-tmp-stage6-gate4
+4 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage6-all2
+41 passed, 1 skipped
+```
+
+Docker 隔离验收使用 Compose project `stage6gate2`，未删除既有 Docker volume：
+
+```text
+docker compose -p stage6gate2 ps
+platform: Up; postgres: Up (healthy)
+
+容器内 GET /health: 200
+容器内 POST /api/v1/runs: 200, status=waiting_review
+PostgreSQL: 该 Run 存在，9 个 artifacts，23 条 run_events，input_artifact_id 已正确回填
+```
+
+阶段 6 已通过，现允许进入阶段 7；阶段 7 的真实模型、队列、对象存储和更多工作流仍按产品边界明确延期，不作为 v1 已支持能力。

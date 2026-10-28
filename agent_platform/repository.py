@@ -100,7 +100,7 @@ class Repository:
 
     def create_run(
         self, *, run_id: str, project_id: str, workflow_version_id: str,
-        input_artifact_id: str, input_hash: str, correlation_id: str,
+        input_artifact_id: str | None, input_hash: str, correlation_id: str,
         context: dict[str, Any], step_names: Iterable[str],
     ) -> RunModel:
         step_names = list(step_names)

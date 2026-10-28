@@ -5,6 +5,8 @@ COPY pyproject.toml README.md ./
 COPY alembic.ini ./
 COPY agent_platform ./agent_platform
 COPY migrations ./migrations
+ENV PIP_DEFAULT_TIMEOUT=300
+ENV PIP_RETRIES=5
 RUN pip install --no-cache-dir ".[postgres]"
 
 ENV DATABASE_URL=sqlite:////app/data/agent_platform.db

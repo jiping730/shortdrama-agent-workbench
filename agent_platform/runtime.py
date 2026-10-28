@@ -79,10 +79,6 @@ class WorkflowRuntime:
         existing_run = self.repository.get_run(run_id)
         if existing_run is not None:
             return RuntimeResult(existing_run.id, existing_run.status)
-        input_artifact = self._create_artifact(
-            run_id=run_id, artifact_type="script_input", value={"script_id": script_id, "title": title, "text": script},
-            schema_version="script-input.v1", parents=[], metadata={"input_hash": input_hash},
-        )
         context = {
             "run_id": run_id, "script_id": script_id, "title": title, "script_text": script,
             "input_hash": input_hash, "revision": 1, "scenes": [], "facts": [], "evidence": [],
@@ -91,9 +87,17 @@ class WorkflowRuntime:
         }
         self.repository.create_run(
             run_id=run_id, project_id=project_id, workflow_version_id=version.id,
-            input_artifact_id=input_artifact.id, input_hash=input_hash,
+            # PostgreSQL enforces artifacts.run_id -> runs.id. Create the run
+            # first, then persist its input artifact and backfill this nullable
+            # reference so both SQLite and PostgreSQL observe the same order.
+            input_artifact_id=None, input_hash=input_hash,
             correlation_id=stable_id("corr", run_id), context=context, step_names=self._step_names,
         )
+        input_artifact = self._create_artifact(
+            run_id=run_id, artifact_type="script_input", value={"script_id": script_id, "title": title, "text": script},
+            schema_version="script-input.v1", parents=[], metadata={"input_hash": input_hash},
+        )
+        self.repository.update_run(run_id, input_artifact_id=input_artifact.id)
         self.repository.create_event(run_id, "run.created", {"workflow": self.workflow_definition.name, "version": version.version})
         context = self._call_adapter_context_hook(run_id, "start", context)
         self.repository.create_event(run_id, "workflow.started", {"workflow": self.workflow_definition.name})

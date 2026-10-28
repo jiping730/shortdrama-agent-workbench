@@ -4,12 +4,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://platform:platform@postgres:5432/platform
+      DATABASE_URL: postgresql+psycopg://platform:${POSTGRES_PASSWORD:-platform}@postgres:5432/platform
       ARTIFACT_DIR: /app/data/artifacts
     volumes:
       - platform_data:/app/data
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
   postgres:
     image: postgres:16-alpine
     ports:
@@ -17,9 +18,14 @@ services:
     environment:
       POSTGRES_DB: platform
       POSTGRES_USER: platform
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
   platform_data:
