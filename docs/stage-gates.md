@@ -9,7 +9,7 @@
 | 0 只读盘点与架构决策 | `docs/reference-analysis.md`、`docs/architecture-decisions.md`、只读边界测试、依赖边界扫描 | 已通过（2026-10-28） |
 | 1 Workflow Adapter 与 Runtime 接口 | Adapter contract tests、已有 workflow 接入/隔离测试、Fake provider contract | 已通过（2026-10-28） |
 | 2 领域模型、数据库、迁移、事件 | SQLite transaction tests、migration smoke test、PostgreSQL integration evidence | 已通过（2026-10-28） |
-| 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 待阶段 2 通过 |
+| 3 Checkpoint、恢复、幂等、局部重试、Error Inbox | process interruption/restart test、unknown safety test、idempotency and retry matrix | 已通过（2026-10-28） |
 | 4 script-to-storyboard | 每个业务步骤的 schema/evidence/review tests 和 offline e2e | 待阶段 3 通过 |
 | 5 API、CLI、管理台 | REST contract、CLI contract、export contract、UI smoke | 待阶段 4 通过 |
 | 6 FakeModel、测试、Docker、CI、文档 | clean environment tests、Docker startup、CI checks、secret scan | 待阶段 5 通过 |
@@ -77,3 +77,24 @@ postgres alembic upgrade head: ok
 ```
 
 PostgreSQL 证据使用隔离的 `stage2gate` compose project 和新 volume，未修改原有数据库卷；验证后该临时 project 会停止。阶段 2 已通过，现允许进入阶段 3。阶段 3 的恢复、幂等、局部重试和 Error Inbox 仍需单独门禁。
+
+## 阶段 3 当前验收
+
+已形成的证据：
+
+- `agent_platform/runtime.py`：每个成功安全边界保存 Checkpoint；重启后可从最新快照恢复；成功 Attempt 保留且不重复执行；超时外部调用落为 `unknown`；unknown 在 reconciliation 前禁止 retry；场景 retry 只调整目标 revision；取消终态可重复调用；非法 step 转换写入事件。
+- `agent_platform/repository.py`、`agent_platform/api.py`：Error Inbox 聚合 failed/needs_recovery Run、unknown ExternalCall 和 pending ReviewTask，保持只读投影，不自动重试。
+- `agent_platform/workflows/script_to_storyboard.py`：Evidence ID 在同一 Run 内稳定，同时避免相同脚本跨 Run 的全局主键冲突；选择性修订先 revise、再 validate，再重新打开审核闸门。
+- `tests/gates/test_stage3_gate.py`：覆盖进程中断恢复、成功步骤不重复、局部场景重试、timeout/unknown 安全、Error Inbox、pause/resume/cancel 和非法转换审计。
+
+阶段 3 验收命令及结果：
+
+```text
+py -3.9 -m pytest tests/gates/test_stage3_gate.py -q --basetemp=.pytest-tmp-stage3-gate2
+7 passed
+
+py -3.9 -m pytest -q --basetemp=.pytest-tmp-stage3-all2
+30 passed, 1 skipped
+```
+
+全量测试中的 1 个 skip 是阶段 2 PostgreSQL 测试未设置连接串；阶段 2 已在隔离 PostgreSQL 环境单独取得 `5 passed`，不影响阶段 3 专项门禁。阶段 3 已通过，现允许进入阶段 4；阶段 4 只验证 script-to-storyboard 业务契约和证据覆盖，不把本阶段可靠性测试当作业务验收。

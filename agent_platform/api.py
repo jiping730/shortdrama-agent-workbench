@@ -137,8 +137,7 @@ def run_reviews(run_id: str) -> dict[str, Any]:
 
 @app.get("/api/v1/error-inbox")
 def error_inbox() -> dict[str, Any]:
-    items = [run for run in runtime.repository.list_runs() if run.status in {"failed", "needs_recovery"}]
-    return {"items": [_run_summary(run) for run in items]}
+    return {"items": runtime.repository.list_error_inbox()}
 
 
 @app.post("/api/v1/reviews/{review_id}/approve")

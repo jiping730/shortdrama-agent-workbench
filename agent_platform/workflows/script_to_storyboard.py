@@ -82,7 +82,7 @@ class ScriptToStoryboardAdapter:
                 raise WorkflowStepError(ErrorCode.INVALID_INPUT, "script text cannot be empty")
             return {"script_id": context["script_id"], "title": context["title"], "input_hash": content_hash(text), "length": len(text)}
         if step_name == "split_script":
-            return self._split_script(context["script_id"], context["script_text"])
+            return self._split_script(context["script_id"], context["script_text"], context.get("run_id"))
         if step_name == "build_source_index":
             scenes = [Scene.model_validate(item) for item in context["scenes"]]
             return {
@@ -138,7 +138,7 @@ class ScriptToStoryboardAdapter:
         raise WorkflowStepError(ErrorCode.INVALID_INPUT, f"unknown step: {step_name}")
 
     @staticmethod
-    def _split_script(script_id: str, text: str) -> list[dict[str, Any]]:
+    def _split_script(script_id: str, text: str, run_id: str | None = None) -> list[dict[str, Any]]:
         # Deterministic headings are preferred; fallback is one scene, never an LLM guess.
         matches = list(re.finditer(r"(?m)^(?:\s*(?:场景|SCENE)\s*[-#：:]?\s*(\d+)?[^\n]*|\s*(?:INT\.|EXT\.)[^\n]*)$", text, re.IGNORECASE))
         ranges: list[tuple[int, int]] = []
@@ -156,7 +156,10 @@ class ScriptToStoryboardAdapter:
             actual_start = start + leading
             actual_end = actual_start + len(source_text)
             scene_id = stable_scene_id(script_id, index, source_text)
-            evidence_id = stable_id("evidence", script_id, scene_id, actual_start, actual_end, content_hash(source_text))
+            evidence_id = stable_id(
+                "evidence", run_id or script_id, script_id, scene_id,
+                actual_start, actual_end, content_hash(source_text),
+            )
             title = source_text.splitlines()[0][:120] if source_text.splitlines() else f"Scene {index}"
             scenes.append(Scene(
                 scene_id=scene_id, scene_no=index, title=title, source_start=actual_start,

@@ -112,8 +112,8 @@ class WorkflowRuntime:
             self._set_run_status(run_id, RunStatus.QUEUED, reason="worker_restart")
             self._set_run_status(run_id, RunStatus.RUNNING, reason="worker_started")
         run = self._require_run(run_id)
-        steps = self._ordered_steps(run_id)
         context = dict(run.context_json or {})
+        steps = self._ordered_steps(run_id, selective_retry=bool(context.get("selective_retry_active")))
 
         for step in steps:
             if step.status == StepStatus.SUCCEEDED.value or step.status == StepStatus.SKIPPED.value:
@@ -174,18 +174,21 @@ class WorkflowRuntime:
         self.repository.create_event(run_id, "step.started", {"step": step_name, "attempt_id": attempt_id}, step_name=step_name)
         try:
             result = self._normalize(self.adapter.validate(step_name, self.adapter.execute_step(step_name, context)))
+            previous_step = self._previous_step(step_name)
+            if step_name == "validate_storyboard" and context.get("selective_retry_active"):
+                previous_step = "revise_rejected_scenes"
             artifact = self._create_artifact(
                 run_id=run_id, artifact_type=step_name, value=result, schema_version=f"{step_name}.v1",
-                parents=[context.get("step_artifacts", {}).get(self._previous_step(step_name))] if self._previous_step(step_name) else [],
+                parents=[context.get("step_artifacts", {}).get(previous_step)] if previous_step else [],
                 metadata={"attempt_id": attempt_id, "input_hash": input_hash},
             )
+            context = self._apply_step_result(step_name, result, context, run_id)
+            context.setdefault("step_artifacts", {})[step_name] = artifact.id
+            self.repository.update_run(run_id, context_json=context, current_step=self._next_step(step_name))
             if external_call_id:
                 self.repository.update_external_call(external_call_id, status="succeeded", response_json={"artifact_id": artifact.id})
             self.repository.update_attempt(attempt.id, status="succeeded", output_artifact_id=artifact.id, finished_at=utcnow())
             self._set_step(step.id, StepStatus.SUCCEEDED, output_artifact_id=artifact.id, finished_at=utcnow(), error_code=None)
-            context = self._apply_step_result(step_name, result, context, run_id)
-            context.setdefault("step_artifacts", {})[step_name] = artifact.id
-            self.repository.update_run(run_id, context_json=context, current_step=self._next_step(step_name))
             self.repository.create_event(run_id, "step.succeeded", {"step": step_name, "artifact_id": artifact.id}, step_name=step_name)
             self._checkpoint(run_id, step_name, context, [artifact.id])
             if step_name == "wait_for_human_review":
@@ -206,6 +209,30 @@ class WorkflowRuntime:
             self.repository.create_event(run_id, "external_call.unknown", {"step": step_name, "attempt_id": attempt_id}, step_name=step_name)
             self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="external_result_unknown")
         except WorkflowStepError as exc:
+            if exc.code == ErrorCode.TIMEOUT and external_call_id:
+                # A provider timeout cannot prove that the remote side did not
+                # execute. Preserve the attempt and require reconciliation.
+                self.repository.update_external_call(
+                    external_call_id, status="unknown",
+                    error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                )
+                self.repository.update_attempt(
+                    attempt.id, status="unknown",
+                    error_type=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                    error_message=str(exc), finished_at=utcnow(),
+                )
+                self._set_step(
+                    step.id, StepStatus.UNKNOWN,
+                    error_code=ErrorCode.EXTERNAL_RESULT_UNKNOWN.value,
+                    finished_at=utcnow(),
+                )
+                self.repository.create_event(
+                    run_id, "external_call.unknown",
+                    {"step": step_name, "attempt_id": attempt_id, "reason": "timeout"},
+                    step_name=step_name,
+                )
+                self._set_run_status(run_id, RunStatus.NEEDS_RECOVERY, reason="timeout_unknown")
+                return
             if external_call_id:
                 self.repository.update_external_call(external_call_id, status="failed", error_code=exc.code.value)
             self.repository.update_attempt(attempt.id, status="failed", error_type=exc.code.value, error_message=str(exc), finished_at=utcnow())
@@ -280,7 +307,14 @@ class WorkflowRuntime:
         step = self.repository.get_step(run_id, target)
         if step is None:
             raise WorkflowStepError(ErrorCode.INVALID_INPUT, f"unknown step: {target}")
-        self.repository.update_step(step.id, status=StepStatus.PENDING.value, error_code=None, finished_at=None)
+        if step.status == StepStatus.UNKNOWN.value:
+            raise WorkflowStepError(
+                ErrorCode.EXTERNAL_RESULT_UNKNOWN,
+                "unknown external result requires reconciliation before retry",
+            )
+        if step.status != StepStatus.FAILED.value:
+            raise WorkflowStepError(ErrorCode.INVALID_INPUT, f"step is not failed: {target}")
+        self._set_step(step.id, StepStatus.QUEUED, error_code=None, finished_at=None)
         self.repository.update_run(run_id, error_code=None, error_message=None, current_step=target)
         self._set_run_status(run_id, RunStatus.QUEUED, reason="selective_step_retry")
         return self.execute_run(run_id)
@@ -305,6 +339,9 @@ class WorkflowRuntime:
         return self.execute_run(run_id)
 
     def cancel(self, run_id: str) -> RuntimeResult:
+        run = self._require_run(run_id)
+        if run.status in {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value}:
+            return RuntimeResult(run_id, run.status)
         self._set_run_status(run_id, RunStatus.CANCELLED, reason="operator_cancel")
         return RuntimeResult(run_id, RunStatus.CANCELLED.value)
 
@@ -438,7 +475,15 @@ class WorkflowRuntime:
             raise KeyError(step_id)
         current = StepStatus(step.status)
         if current != target:
-            assert_step_transition(current, target)
+            try:
+                assert_step_transition(current, target)
+            except InvalidTransition:
+                self.repository.create_event(
+                    step.run_id, "step.illegal_transition",
+                    {"step": step.step_name, "from": current.value, "to": target.value},
+                    step_name=step.step_name,
+                )
+                raise
         self.repository.update_step(step_id, status=target.value, **fields)
         self.repository.update_task_for_step(step.run_id, step_id, target.value)
 
@@ -463,8 +508,14 @@ class WorkflowRuntime:
             return None
         return self._step_names[index + 1] if index + 1 < len(self._step_names) else None
 
-    def _ordered_steps(self, run_id: str) -> list[StepExecutionModel]:
+    def _ordered_steps(self, run_id: str, *, selective_retry: bool = False) -> list[StepExecutionModel]:
         order = {name: index for index, name in enumerate(self._step_names)}
+        if selective_retry and "validate_storyboard" in order and "revise_rejected_scenes" in order:
+            # The declared workflow order remains stable for a first run. A
+            # rejected-scene recovery pass must revise first, then validate the
+            # new storyboard before opening the next review gate.
+            order["revise_rejected_scenes"] = len(order)
+            order["validate_storyboard"] = len(order) + 1
         return sorted(self.repository.get_steps(run_id), key=lambda step: order.get(step.step_name, 999))
 
     def _previous_step(self, step_name: str) -> str | None:

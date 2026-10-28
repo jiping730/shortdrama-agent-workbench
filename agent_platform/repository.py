@@ -249,6 +249,51 @@ class Repository:
         with self.db.session() as session:
             return session.execute(select(CheckpointModel).where(CheckpointModel.run_id == run_id).order_by(desc(CheckpointModel.sequence_no)).limit(1)).scalar_one_or_none()
 
+    def list_error_inbox(self) -> list[dict[str, Any]]:
+        """Return durable work requiring operator attention.
+
+        The inbox intentionally projects three different persisted facts into one
+        read model: terminal/uncertain runs, unknown external calls, and pending
+        human reviews. It does not mutate or auto-retry any item.
+        """
+        with self.db.session() as session:
+            items: list[dict[str, Any]] = []
+            runs = session.execute(select(RunModel).where(
+                RunModel.status.in_(["failed", "needs_recovery"]),
+            ).order_by(RunModel.updated_at)).scalars()
+            for run in runs:
+                items.append({
+                    "kind": "run", "item_id": run.id, "run_id": run.id,
+                    "status": run.status, "error_code": run.error_code,
+                    "error_message": run.error_message,
+                    "created_at": run.created_at.isoformat() if run.created_at else None,
+                    "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+                })
+
+            unknown_calls = session.execute(select(ExternalCallModel).where(
+                ExternalCallModel.status == "unknown",
+            ).order_by(ExternalCallModel.updated_at)).scalars()
+            for call in unknown_calls:
+                items.append({
+                    "kind": "external_call", "item_id": call.id, "run_id": call.run_id,
+                    "status": call.status, "error_code": call.error_code,
+                    "operation": call.operation, "provider": call.provider,
+                    "created_at": call.created_at.isoformat() if call.created_at else None,
+                    "updated_at": call.updated_at.isoformat() if call.updated_at else None,
+                })
+
+            reviews = session.execute(select(ReviewTaskModel).where(
+                ReviewTaskModel.status == "pending",
+            ).order_by(ReviewTaskModel.created_at)).scalars()
+            for review in reviews:
+                items.append({
+                    "kind": "review", "item_id": review.id, "run_id": review.run_id,
+                    "status": review.status, "scene_id": review.scene_id,
+                    "artifact_id": review.artifact_id,
+                    "created_at": review.created_at.isoformat() if review.created_at else None,
+                })
+            return items
+
     def create_review(self, **fields: Any) -> ReviewTaskModel:
         with self.db.session() as session:
             review = ReviewTaskModel(**fields)
